@@ -11,6 +11,7 @@ export interface AnalysisResult {
   demand: number;
   competition: number;
   marginPotential: number;
+  priceOpportunity: number;
   priceMin: number;
   priceMax: number;
   positives: string[];
@@ -288,6 +289,7 @@ export function analyzeProduct(rawQuery: string): AnalysisResult {
     demand: profile.demand,
     competition: profile.competition,
     marginPotential: profile.margin,
+    priceOpportunity: priceScore,
     priceMin: profile.priceMin,
     priceMax: profile.priceMax,
     positives: positives.slice(0, 3),

@@ -66,7 +66,15 @@ function ScoreRing({ score, ringClass }: { score: number; ringClass: string }) {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function StatCard({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
   return (
     <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900/50">
       <div className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-500">
@@ -75,6 +83,9 @@ function StatCard({ label, value }: { label: string; value: string }) {
       <div className="mt-1 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
         {value}
       </div>
+      {hint && (
+        <div className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-500">{hint}</div>
+      )}
     </div>
   );
 }
@@ -88,7 +99,7 @@ export default function Home() {
   function runAnalysis(term: string) {
     const trimmed = term.trim();
     if (!trimmed) {
-      setError("Enter a product idea or keyword to analyze.");
+      setError("Enter a product idea or keyword to find a winner.");
       setResult(null);
       return;
     }
@@ -97,7 +108,7 @@ export default function Home() {
     setIsAnalyzing(true);
     setResult(null);
 
-    // Small delay so the analysis feels deliberate; real data lookups will
+    // Small delay so the scan feels deliberate; real data lookups will
     // replace this in a future version.
     setTimeout(() => {
       setResult(analyzeProduct(trimmed));
@@ -145,7 +156,7 @@ export default function Home() {
             disabled={isAnalyzing}
             className="rounded-xl bg-zinc-900 px-6 py-3 text-base font-semibold text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-emerald-600 dark:hover:bg-emerald-500"
           >
-            {isAnalyzing ? "Analyzing..." : "Analyze Opportunity"}
+            {isAnalyzing ? "Scanning..." : "Find Winning Product"}
           </button>
         </form>
 
@@ -172,7 +183,7 @@ export default function Home() {
         {isAnalyzing && (
           <div className="mt-12 flex flex-col items-center gap-3 text-zinc-500 dark:text-zinc-500">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-300 border-t-emerald-500 dark:border-zinc-700" />
-            <p className="text-sm">Analyzing market opportunity...</p>
+            <p className="text-sm">Scanning for market potential...</p>
           </div>
         )}
 
@@ -201,19 +212,28 @@ export default function Home() {
             </div>
 
             <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <StatCard label="Est. Demand" value={`${result.demand}/100`} />
-              <StatCard label="Competition" value={`${result.competition}/100`} />
+              <StatCard label="Demand Potential" value={`${result.demand}/100`} />
+              <StatCard label="Competition Risk" value={`${result.competition}/100`} />
               <StatCard label="Margin Potential" value={`${result.marginPotential}/100`} />
               <StatCard
-                label="Price Range"
-                value={`$${result.priceMin} - $${result.priceMax}`}
+                label="Price Opportunity"
+                value={`${result.priceOpportunity}/100`}
+                hint={`$${result.priceMin} - $${result.priceMax}`}
               />
             </div>
+
+            <p className="mt-4 text-xs text-zinc-500 dark:text-zinc-500">
+              <span className="font-semibold text-zinc-600 dark:text-zinc-400">
+                AI Market Estimate —
+              </span>{" "}
+              Based on category patterns and product characteristics. Live
+              marketplace data integration coming soon.
+            </p>
 
             <div className="mt-8 grid gap-6 sm:grid-cols-2">
               <div>
                 <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                  Positive Signals
+                  Why this product could work
                 </h3>
                 <ul className="mt-3 space-y-2">
                   {result.positives.map((signal) => (
@@ -229,7 +249,7 @@ export default function Home() {
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                  Risks
+                  What to watch
                 </h3>
                 <ul className="mt-3 space-y-2">
                   {result.risks.map((signal) => (
@@ -243,6 +263,17 @@ export default function Home() {
                   ))}
                 </ul>
               </div>
+            </div>
+
+            <div className="mt-8 border-t border-zinc-200 pt-6 dark:border-zinc-800">
+              <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                Next Steps
+              </h3>
+              <ul className="mt-3 space-y-1.5 text-sm text-zinc-600 dark:text-zinc-400">
+                <li>• Check competitors</li>
+                <li>• Compare suppliers</li>
+                <li>• Validate market demand</li>
+              </ul>
             </div>
           </section>
         )}
