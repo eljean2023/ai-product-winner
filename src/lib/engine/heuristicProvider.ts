@@ -12,7 +12,6 @@ import {
   type AnalysisResult,
   type DimensionKey,
   type DimensionScores,
-  type MarketIntelligenceProvider,
   type ProductOpportunity,
   type Recommendation,
 } from "./types";
@@ -32,7 +31,7 @@ function titleCase(input: string): string {
     .join(" ");
 }
 
-function pickRecommendation(score: number): Recommendation {
+export function pickRecommendation(score: number): Recommendation {
   if (score >= 75) return "Strong Opportunity";
   if (score >= 50) return "Possible Opportunity";
   return "High Risk";
@@ -87,11 +86,14 @@ function buildAnalysis(query: string, profile: CategoryProfile, matchedCategory:
     dimensions,
     priceMin,
     priceMax,
+    priceCurrency: "USD",
     positives,
     risks,
     demand: dimensions.demand,
     competition: dimensions.competition,
     marginPotential: dimensions.margin,
+    marketplaceData: [],
+    dataConfidence: "heuristic-only",
   };
 }
 
@@ -107,7 +109,7 @@ export function analyzeProduct(rawQuery: string): AnalysisResult {
 // rather than doing a flat keyword match against a fixed candidate list.
 // ---------------------------------------------------------------------------
 
-interface Intent {
+export interface Intent {
   categories: CategoryProfile[];
   budgetMax?: number;
   wantsEasyShipping: boolean;
@@ -210,7 +212,7 @@ function roundRobinByCategory(items: ScoredCandidate[], limit: number): ScoredCa
   return picked.sort((a, b) => b.fit - a.fit);
 }
 
-function explainMatch(result: AnalysisResult, intent: Intent): string {
+export function explainMatch(result: AnalysisResult, intent: Intent): string {
   const parts: string[] = [];
   if (intent.budgetMax !== undefined) {
     parts.push(`Fits within a $${intent.budgetMax} budget ($${result.priceMin}-$${result.priceMax})`);
@@ -233,7 +235,18 @@ function explainMatch(result: AnalysisResult, intent: Intent): string {
   return parts.map((p) => (p.endsWith(".") ? p : `${p}.`)).join(" ");
 }
 
-export function discoverOpportunities(rawQuery: string, limit = 5): ProductOpportunity[] {
+export interface RankedCandidate {
+  result: AnalysisResult;
+  fit: number;
+  intent: Intent;
+}
+
+// Shortlists and ranks candidates from the curated per-category pool, using
+// the heuristic engine only. Split out from discoverOpportunities so the
+// hybrid engine can take this shortlist and enrich just these (typically
+// `limit`, not the whole pool) with real marketplace data instead of doing
+// so for every candidate.
+export function rankCandidates(rawQuery: string, limit = 5): RankedCandidate[] {
   const query = rawQuery.trim();
   const intent = parseIntent(query);
 
@@ -255,7 +268,11 @@ export function discoverOpportunities(rawQuery: string, limit = 5): ProductOppor
     ? roundRobinByCategory(scored, limit)
     : [...scored].sort((a, b) => b.fit - a.fit).slice(0, limit);
 
-  return ranked.slice(0, limit).map(({ result }) => ({
+  return ranked.slice(0, limit).map((candidate) => ({ ...candidate, intent }));
+}
+
+export function discoverOpportunities(rawQuery: string, limit = 5): ProductOpportunity[] {
+  return rankCandidates(rawQuery, limit).map(({ result, intent }) => ({
     productName: result.productName,
     category: result.category,
     opportunityScore: result.opportunityScore,
@@ -266,11 +283,8 @@ export function discoverOpportunities(rawQuery: string, limit = 5): ProductOppor
     marginPotential: result.marginPotential,
     priceMin: result.priceMin,
     priceMax: result.priceMax,
+    priceCurrency: result.priceCurrency,
+    marketplaceData: result.marketplaceData,
+    dataConfidence: result.dataConfidence,
   }));
 }
-
-export const heuristicProvider: MarketIntelligenceProvider = {
-  name: "Local Heuristic Engine",
-  analyzeProduct,
-  discoverOpportunities,
-};

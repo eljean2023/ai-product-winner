@@ -527,3 +527,11 @@ export function findCategoryProfile(query: string): CategoryProfile | null {
   }
   return null;
 }
+
+// Looks a profile up by its exact category name (e.g. the `category` field
+// already stamped on an AnalysisResult) rather than re-matching keywords —
+// used by the hybrid engine, which already knows which profile produced a
+// given result and shouldn't risk a different match on re-derivation.
+export function getCategoryProfileByName(name: string): CategoryProfile {
+  return CATEGORY_PROFILES.find((profile) => profile.category === name) ?? FALLBACK_PROFILE;
+}

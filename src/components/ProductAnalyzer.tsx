@@ -8,6 +8,8 @@ import {
   type AnalysisResult,
   type DimensionKey,
 } from "@/lib/engine";
+import { MarketplaceButtons, MarketplaceChip } from "./MarketplaceDisplay";
+import { useMarketplaceCountry } from "./MarketplaceCountryContext";
 import { CONFIDENCE_STYLES, RECOMMENDATION_STYLES } from "./recommendationStyles";
 
 const EXAMPLES = ["wireless earbuds", "ergonomic office chair with footrest", "gaming mouse"];
@@ -44,7 +46,7 @@ function ScoreRing({ score, ringClass }: { score: number; ringClass: string }) {
         r={radius}
         strokeWidth="12"
         fill="none"
-        className="stroke-zinc-200 dark:stroke-zinc-800"
+        className="stroke-slate-200 dark:stroke-slate-800"
       />
       <circle
         cx="64"
@@ -62,7 +64,7 @@ function ScoreRing({ score, ringClass }: { score: number; ringClass: string }) {
         y="64"
         textAnchor="middle"
         dominantBaseline="middle"
-        className="rotate-90 fill-zinc-900 text-2xl font-semibold dark:fill-zinc-50"
+        className="rotate-90 fill-dark text-2xl font-semibold dark:fill-slate-50"
         style={{ transformOrigin: "64px 64px" }}
       >
         {score}
@@ -78,17 +80,17 @@ function favorability(key: DimensionKey, value: number): number {
 function dimensionTint(key: DimensionKey, value: number): string {
   const fav = favorability(key, value);
   if (fav >= 70) return "border-emerald-200 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-500/10";
-  if (fav >= 40) return "border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900/50";
+  if (fav >= 40) return "border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/50";
   return "border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-500/10";
 }
 
 function DimensionCard({ dimKey, value }: { dimKey: DimensionKey; value: number }) {
   return (
     <div className={`rounded-xl border px-4 py-3 ${dimensionTint(dimKey, value)}`}>
-      <div className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-500">
+      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
         {DIMENSION_LABELS[dimKey]}
       </div>
-      <div className="mt-1 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+      <div className="mt-1 text-sm font-semibold text-dark dark:text-slate-100">
         {value}/100
       </div>
     </div>
@@ -100,12 +102,13 @@ interface ProductAnalyzerProps {
 }
 
 export default function ProductAnalyzer({ ref }: ProductAnalyzerProps) {
+  const { country } = useMarketplaceCountry();
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState("");
 
-  function runAnalysis(term: string) {
+  async function runAnalysis(term: string) {
     const trimmed = term.trim();
     if (!trimmed) {
       setError("Enter a product idea or keyword to find a winner.");
@@ -117,32 +120,35 @@ export default function ProductAnalyzer({ ref }: ProductAnalyzerProps) {
     setIsAnalyzing(true);
     setResult(null);
 
-    // Small delay so the scan feels deliberate; real data lookups will
-    // replace this in a future version.
-    setTimeout(() => {
-      setResult(analyzeProduct(trimmed));
+    try {
+      const analysis = await analyzeProduct(trimmed, { country });
+      setResult(analysis);
+    } catch {
+      setError("Something went wrong while analyzing this product. Please try again.");
+    } finally {
       setIsAnalyzing(false);
-    }, 600);
+    }
   }
 
   useImperativeHandle(ref, () => ({
     runAnalysis: (term: string) => {
       setQuery(term);
-      runAnalysis(term);
+      void runAnalysis(term);
     },
   }));
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    runAnalysis(query);
+    void runAnalysis(query);
   }
 
   function handleExampleClick(example: string) {
     setQuery(example);
-    runAnalysis(example);
+    void runAnalysis(example);
   }
 
   const styles = result ? RECOMMENDATION_STYLES[result.recommendation] : null;
+  const heroImage = result?.marketplaceData.find((s) => s.available)?.topListing?.imageUrl;
 
   return (
     <div>
@@ -152,25 +158,25 @@ export default function ProductAnalyzer({ ref }: ProductAnalyzerProps) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Enter a product idea or keyword, e.g. wireless earbuds"
-          className="flex-1 rounded-xl border border-zinc-300 bg-white px-4 py-3 text-base text-zinc-900 placeholder:text-zinc-400 outline-none ring-emerald-500/40 focus:border-emerald-500 focus:ring-4 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+          className="flex-1 rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-dark placeholder:text-slate-400 outline-none ring-orange-500/40 focus:border-orange-500 focus:ring-4 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
         />
         <button
           type="submit"
           disabled={isAnalyzing}
-          className="rounded-xl bg-zinc-900 px-6 py-3 text-base font-semibold text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+          className="rounded-xl bg-gradient-to-r from-primary to-secondary px-6 py-3 text-base font-semibold text-white shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isAnalyzing ? "Scanning..." : "Find Winning Product"}
         </button>
       </form>
 
       <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-zinc-500 dark:text-zinc-500">Try:</span>
+        <span className="text-slate-500">Try:</span>
         {EXAMPLES.map((example) => (
           <button
             key={example}
             type="button"
             onClick={() => handleExampleClick(example)}
-            className="rounded-full border border-zinc-300 px-3 py-1 text-zinc-700 transition-colors hover:border-emerald-500 hover:text-emerald-700 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-emerald-500 dark:hover:text-emerald-400"
+            className="rounded-full border border-slate-300 px-3 py-1 text-slate-700 transition-colors hover:border-orange-400 hover:text-primary-dark dark:border-slate-700 dark:text-slate-300 dark:hover:border-orange-500 dark:hover:text-secondary"
           >
             {example}
           </button>
@@ -184,48 +190,71 @@ export default function ProductAnalyzer({ ref }: ProductAnalyzerProps) {
       )}
 
       {isAnalyzing && (
-        <div className="mt-12 flex flex-col items-center gap-3 text-zinc-500 dark:text-zinc-500">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-300 border-t-emerald-500 dark:border-zinc-700" />
-          <p className="text-sm">Scanning for market potential...</p>
+        <div className="mt-12 flex flex-col items-center gap-3 text-slate-500">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-primary" />
+          <p className="text-sm">Scanning marketplaces for real-time data...</p>
         </div>
       )}
 
       {result && styles && !isAnalyzing && (
-        <section className="mt-10 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:p-8">
+        <section className="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-950 dark:shadow-none sm:p-8">
           <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-                {result.category}
-              </p>
-              <h2 className="mt-1 text-2xl font-bold text-zinc-900 dark:text-zinc-50">
-                {result.productName}
-              </h2>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span
-                  className={`inline-block rounded-full px-3 py-1 text-sm font-semibold ${styles.badge}`}
-                >
-                  {result.recommendation}
-                </span>
-                <span
-                  className={`inline-block rounded-full px-3 py-1 text-sm font-semibold ${CONFIDENCE_STYLES[result.confidence]}`}
-                  title={result.confidenceReason}
-                >
-                  {result.confidence} Confidence
-                </span>
+            <div className="flex gap-4">
+              {heroImage && (
+                // eslint-disable-next-line @next/next/no-img-element -- external marketplace image, not a local asset
+                <img
+                  src={heroImage}
+                  alt={result.productName}
+                  className="h-20 w-20 shrink-0 rounded-xl border border-slate-200 object-cover dark:border-slate-800"
+                />
+              )}
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  {result.category}
+                </p>
+                <h2 className="mt-1 text-2xl font-bold text-dark dark:text-slate-50">
+                  {result.productName}
+                </h2>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <span
+                    className={`inline-block rounded-full px-3 py-1 text-sm font-semibold ${styles.badge}`}
+                  >
+                    {result.recommendation}
+                  </span>
+                  <span
+                    className={`inline-block rounded-full px-3 py-1 text-sm font-semibold ${CONFIDENCE_STYLES[result.confidence]}`}
+                    title={result.confidenceReason}
+                  >
+                    {result.confidence} Confidence
+                  </span>
+                  <span className="inline-block rounded-full bg-gradient-to-r from-primary/10 to-secondary/10 px-3 py-1 text-xs font-semibold text-primary-dark dark:text-secondary">
+                    {result.dataConfidence === "hybrid" ? "AI + Live Data" : "AI Estimate"}
+                  </span>
+                </div>
+                <p className="mt-2 max-w-sm text-xs text-slate-500">
+                  {result.confidenceReason}
+                </p>
+                <p className="mt-2 text-sm font-medium text-slate-600 dark:text-slate-400">
+                  {result.dataConfidence === "hybrid" ? "Current price range" : "Typical price range"}: {result.priceMin} - {result.priceMax} {result.priceCurrency}
+                </p>
               </div>
-              <p className="mt-2 max-w-sm text-xs text-zinc-500 dark:text-zinc-500">
-                {result.confidenceReason}
-              </p>
-              <p className="mt-2 text-sm font-medium text-zinc-600 dark:text-zinc-400">
-                Typical price range: ${result.priceMin} - ${result.priceMax}
-              </p>
             </div>
             <div className="flex flex-col items-center">
               <ScoreRing score={result.opportunityScore} ringClass={styles.ring} />
-              <span className="mt-1 text-xs font-medium uppercase tracking-wide text-zinc-500">
+              <span className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">
                 Opportunity Score
               </span>
             </div>
+          </div>
+
+          <div className="mt-6 flex flex-wrap gap-2">
+            {result.marketplaceData.map((summary) => (
+              <MarketplaceChip key={summary.marketplace} summary={summary} />
+            ))}
+          </div>
+
+          <div className="mt-4">
+            <MarketplaceButtons summaries={result.marketplaceData} />
           </div>
 
           <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -234,25 +263,25 @@ export default function ProductAnalyzer({ ref }: ProductAnalyzerProps) {
             ))}
           </div>
 
-          <p className="mt-4 text-xs text-zinc-500 dark:text-zinc-500">
-            <span className="font-semibold text-zinc-600 dark:text-zinc-400">
-              AI Market Estimate —
+          <p className="mt-4 text-xs text-slate-500">
+            <span className="font-semibold text-slate-600 dark:text-slate-400">
+              {result.dataConfidence === "hybrid" ? "AI + Marketplace Estimate —" : "AI Market Estimate —"}
             </span>{" "}
-            Every dimension above is calculated independently from category
-            patterns and this product&apos;s own name. Live marketplace data
-            integration coming soon.
+            {result.dataConfidence === "hybrid"
+              ? "Dimensions blend category heuristics with live marketplace listings above."
+              : "No live marketplace match was found, so every dimension above comes from category patterns and this product's own name."}
           </p>
 
           <div className="mt-8 grid gap-6 sm:grid-cols-2">
             <div>
-              <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+              <h3 className="text-sm font-semibold text-dark dark:text-slate-100">
                 Why this product could work
               </h3>
               <ul className="mt-3 space-y-2">
                 {result.positives.map((signal) => (
                   <li
                     key={signal}
-                    className="flex items-start gap-2 text-sm text-zinc-700 dark:text-zinc-300"
+                    className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300"
                   >
                     <span className="text-emerald-600 dark:text-emerald-400">✓</span>
                     <span>{signal}</span>
@@ -261,14 +290,14 @@ export default function ProductAnalyzer({ ref }: ProductAnalyzerProps) {
               </ul>
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+              <h3 className="text-sm font-semibold text-dark dark:text-slate-100">
                 What to watch
               </h3>
               <ul className="mt-3 space-y-2">
                 {result.risks.map((signal) => (
                   <li
                     key={signal}
-                    className="flex items-start gap-2 text-sm text-zinc-700 dark:text-zinc-300"
+                    className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300"
                   >
                     <span className="text-amber-600 dark:text-amber-400">⚠</span>
                     <span>{signal}</span>
@@ -278,12 +307,12 @@ export default function ProductAnalyzer({ ref }: ProductAnalyzerProps) {
             </div>
           </div>
 
-          <div className="mt-8 border-t border-zinc-200 pt-6 dark:border-zinc-800">
-            <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+          <div className="mt-8 border-t border-slate-200 pt-6 dark:border-slate-800">
+            <h3 className="text-sm font-semibold text-dark dark:text-slate-100">
               Next Steps
             </h3>
-            <ul className="mt-3 space-y-1.5 text-sm text-zinc-600 dark:text-zinc-400">
-              <li>• Check competitors</li>
+            <ul className="mt-3 space-y-1.5 text-sm text-slate-600 dark:text-slate-400">
+              <li>• Check competitors on Mercado Libre and Amazon</li>
               <li>• Compare suppliers</li>
               <li>• Validate market demand</li>
             </ul>

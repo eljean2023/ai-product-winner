@@ -18,27 +18,30 @@ export default function Home() {
   }
 
   return (
-    <div className="flex flex-1 flex-col items-center bg-zinc-50 px-4 py-16 font-sans dark:bg-black sm:px-6">
+    <div className="flex flex-1 flex-col items-center px-4 py-12 font-sans sm:px-6 sm:py-16">
       <main className="w-full max-w-2xl">
         <div className="text-center">
-          <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 sm:text-4xl">
+          <span className="inline-block rounded-full bg-gradient-to-r from-primary/10 to-secondary/10 px-4 py-1 text-xs font-semibold uppercase tracking-wide text-primary-dark dark:text-secondary">
+            Product Research Platform
+          </span>
+          <h1 className="mt-4 text-3xl font-bold tracking-tight text-dark dark:text-slate-50 sm:text-4xl">
             AI Product Hunter
           </h1>
-          <p className="mt-3 text-base text-zinc-600 dark:text-zinc-400">
+          <p className="mt-3 text-base text-slate-600 dark:text-slate-400">
             {mode === "discover"
               ? "Not sure what to sell? Discover product opportunities worth exploring."
               : "Find profitable products before investing money."}
           </p>
         </div>
 
-        <div className="mt-8 flex gap-1 rounded-xl border border-zinc-200 bg-white p-1 dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="mt-8 flex gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <button
             type="button"
             onClick={() => setMode("discover")}
-            className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+            className={`flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
               mode === "discover"
-                ? "bg-zinc-900 text-white dark:bg-emerald-600"
-                : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                ? "bg-gradient-to-r from-primary to-secondary text-white shadow-sm"
+                : "text-slate-600 hover:text-dark dark:text-slate-400 dark:hover:text-slate-100"
             }`}
           >
             Discover Products
@@ -46,10 +49,10 @@ export default function Home() {
           <button
             type="button"
             onClick={() => setMode("analyze")}
-            className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+            className={`flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
               mode === "analyze"
-                ? "bg-zinc-900 text-white dark:bg-emerald-600"
-                : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                ? "bg-gradient-to-r from-primary to-secondary text-white shadow-sm"
+                : "text-slate-600 hover:text-dark dark:text-slate-400 dark:hover:text-slate-100"
             }`}
           >
             Analyze a Product

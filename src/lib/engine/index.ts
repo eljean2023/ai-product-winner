@@ -1,27 +1,30 @@
 // Public surface of the intelligence layer. Components should only ever
-// import from here, not from `heuristicProvider` directly — that keeps the
-// UI decoupled from the specific engine implementation. Swapping in a
-// provider backed by live marketplace data later (Amazon, Mercado Libre,
-// Google Trends) means implementing MarketIntelligenceProvider and changing
-// the `marketIntelligence` assignment below; nothing in the UI has to move.
-import { heuristicProvider } from "./heuristicProvider";
-import type { MarketIntelligenceProvider } from "./types";
+// import from here, not from `heuristicProvider` or `hybridEngine` directly
+// — that keeps the UI decoupled from the specific engine implementation.
+// The hybrid engine blends the pure heuristic engine with live marketplace
+// data (Mercado Libre, Amazon, ...); swapping in a different blend strategy
+// later means changing the `marketIntelligence` assignment below, nothing
+// in the UI has to move.
+import { hybridProvider } from "./hybridEngine";
+import type { EngineOptions, MarketIntelligenceProvider } from "./types";
 
-export const marketIntelligence: MarketIntelligenceProvider = heuristicProvider;
+export const marketIntelligence: MarketIntelligenceProvider = hybridProvider;
 
-export function analyzeProduct(query: string) {
-  return marketIntelligence.analyzeProduct(query);
+export function analyzeProduct(query: string, opts?: EngineOptions) {
+  return marketIntelligence.analyzeProduct(query, opts);
 }
 
-export function discoverOpportunities(query: string, limit?: number) {
-  return marketIntelligence.discoverOpportunities(query, limit);
+export function discoverOpportunities(query: string, limit?: number, opts?: EngineOptions) {
+  return marketIntelligence.discoverOpportunities(query, limit, opts);
 }
 
 export type {
   AnalysisResult,
   ConfidenceLevel,
+  DataConfidence,
   DimensionKey,
   DimensionScores,
+  EngineOptions,
   MarketIntelligenceProvider,
   ProductOpportunity,
   Recommendation,
