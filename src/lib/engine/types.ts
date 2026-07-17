@@ -72,21 +72,36 @@ export interface AnalysisResult {
   dataConfidence: DataConfidence;
 }
 
+// A single real marketplace listing, scored. Every identifying field
+// (title, price, imageUrl, permalink, ...) comes straight from the
+// marketplace — the engine only ever adds the scoring fields on top, never
+// invents or substitutes the product identity itself.
 export interface ProductOpportunity {
-  productName: string;
+  title: string;
   category: string;
+  marketplace: MarketplaceSummary["marketplace"];
+  marketplaceName: string;
+  price: number;
+  currency: string;
+  imageUrl?: string;
+  permalink: string;
+  seller?: string;
+  condition?: string;
+  location?: string;
+  freeShipping?: boolean;
   opportunityScore: number;
   recommendation: Recommendation;
+  dimensions: DimensionScores;
   shortExplanation: string;
-  demand: number;
-  competition: number;
-  marginPotential: number;
-  priceMin: number;
-  priceMax: number;
-  priceCurrency: string;
-  imageUrl?: string;
-  marketplaceData: MarketplaceSummary[];
   dataConfidence: DataConfidence;
+}
+
+export interface DiscoveryResult {
+  products: ProductOpportunity[];
+  // Set when there are zero products — either the marketplace isn't
+  // connected, or a real search simply returned nothing. Never paired with
+  // a non-empty products list.
+  reason?: string;
 }
 
 export interface EngineOptions {
@@ -101,5 +116,5 @@ export interface EngineOptions {
 export interface MarketIntelligenceProvider {
   name: string;
   analyzeProduct(query: string, opts?: EngineOptions): Promise<AnalysisResult>;
-  discoverOpportunities(query: string, limit?: number, opts?: EngineOptions): Promise<ProductOpportunity[]>;
+  discoverOpportunities(query: string, limit?: number, opts?: EngineOptions): Promise<DiscoveryResult>;
 }

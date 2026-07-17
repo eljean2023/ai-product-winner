@@ -4,20 +4,17 @@
 // through `searchAllMarketplaces`, never a specific provider, so the engine
 // stays decoupled from where the data actually comes from.
 import { searchAllMarketplaces } from "@/lib/marketplace/registry";
+import { mercadoLibreProvider } from "@/lib/marketplace/providers/mercadoLibre";
 import type { MarketplaceSummary } from "@/lib/marketplace/types";
 import { getCategoryProfileByName } from "./categoryProfiles";
-import {
-  analyzeProduct as heuristicAnalyze,
-  explainMatch,
-  pickRecommendation,
-  rankCandidates,
-} from "./heuristicProvider";
+import { analyzeProduct as heuristicAnalyze, pickRecommendation } from "./heuristicProvider";
+import { scoreMarketplaceProduct } from "./productScoring";
 import type {
   AnalysisResult,
   DataConfidence,
+  DiscoveryResult,
   EngineOptions,
   MarketIntelligenceProvider,
-  ProductOpportunity,
 } from "./types";
 
 function clamp(value: number, min: number, max: number): number {
@@ -161,39 +158,39 @@ export async function analyzeProduct(rawQuery: string, opts: EngineOptions = {})
   return withMarketplaceData(base, summaries);
 }
 
+// Searches Mercado Libre directly with the user's exact query and scores
+// each real listing returned — never a candidate name we made up. Amazon is
+// intentionally not queried here (Discovery is Mercado-Libre-only per the
+// product spec); analyzeProduct() below still enriches from every
+// marketplace since it's scoring one already-known product name.
 export async function discoverOpportunities(
   rawQuery: string,
-  limit = 5,
+  limit = 30,
   opts: EngineOptions = {}
-): Promise<ProductOpportunity[]> {
-  const candidates = rankCandidates(rawQuery, limit);
+): Promise<DiscoveryResult> {
+  const trimmed = rawQuery.trim();
+  if (!trimmed) return { products: [] };
 
-  const enriched = await Promise.all(
-    candidates.map(async ({ result, intent }) => {
-      const summaries = await searchAllMarketplaces(result.productName, { country: opts.country });
-      const hybrid = withMarketplaceData(result, summaries);
-      return { hybrid, intent };
-    })
-  );
+  const summary = await mercadoLibreProvider.search(trimmed, { country: opts.country, limit: 30 });
 
-  enriched.sort((a, b) => b.hybrid.opportunityScore - a.hybrid.opportunityScore);
+  if (!summary.available || summary.listings.length === 0) {
+    return { products: [], reason: summary.reason ?? "No products found." };
+  }
 
-  return enriched.map(({ hybrid, intent }) => ({
-    productName: hybrid.productName,
-    category: hybrid.category,
-    opportunityScore: hybrid.opportunityScore,
-    recommendation: hybrid.recommendation,
-    shortExplanation: explainMatch(hybrid, intent),
-    demand: hybrid.demand,
-    competition: hybrid.competition,
-    marginPotential: hybrid.marginPotential,
-    priceMin: hybrid.priceMin,
-    priceMax: hybrid.priceMax,
-    priceCurrency: hybrid.priceCurrency,
-    imageUrl: hybrid.marketplaceData.find((s) => s.available)?.topListing?.imageUrl,
-    marketplaceData: hybrid.marketplaceData,
-    dataConfidence: hybrid.dataConfidence,
-  }));
+  const market = {
+    marketplace: summary.marketplace,
+    marketplaceName: summary.marketplaceName,
+    totalListings: summary.listingCount,
+    totalSellers: summary.sellerCount ?? summary.listingCount,
+    priceMin: summary.minPrice ?? summary.averagePrice ?? 0,
+    priceMax: summary.maxPrice ?? summary.averagePrice ?? 0,
+    currency: summary.currency ?? "",
+  };
+
+  const scored = summary.listings.map((listing) => scoreMarketplaceProduct(listing, market));
+  scored.sort((a, b) => b.opportunityScore - a.opportunityScore);
+
+  return { products: scored.slice(0, limit) };
 }
 
 export const hybridProvider: MarketIntelligenceProvider = {

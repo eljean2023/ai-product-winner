@@ -1,42 +1,50 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { discoverOpportunities, type ProductOpportunity } from "@/lib/engine";
+import type { ProductOpportunity } from "@/lib/engine";
 import { useMarketplaceCountry } from "./MarketplaceCountryContext";
+import MarketplaceStatusBar from "./MarketplaceStatusBar";
 import { RECOMMENDATION_STYLES } from "./recommendationStyles";
 
-const EXAMPLES = [
-  "I have $500",
-  "Easy to ship",
-  "High margin",
-  "Trending kitchen products",
-  "Small products",
-  "Gaming",
-  "Pet",
-  "Beauty",
-];
-
-const IDK_EXAMPLE = "I don't know what to sell";
+const EXAMPLES = ["iphone", "gaming mouse", "usb c charger", "office chair", "wireless earbuds"];
 
 interface ProductDiscoveryProps {
   onAnalyze: (productName: string) => void;
 }
 
+interface DiscoverResponse {
+  products: ProductOpportunity[];
+  reason?: string;
+}
+
 export default function ProductDiscovery({ onAnalyze }: ProductDiscoveryProps) {
   const { country } = useMarketplaceCountry();
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<ProductOpportunity[] | null>(null);
+  const [products, setProducts] = useState<ProductOpportunity[] | null>(null);
+  const [reason, setReason] = useState<string | undefined>(undefined);
   const [isSearching, setIsSearching] = useState(false);
   const [searchedFor, setSearchedFor] = useState("");
 
   async function runDiscovery(term: string) {
+    const trimmed = term.trim();
+    if (!trimmed) return;
+
     setIsSearching(true);
-    setResults(null);
+    setProducts(null);
+    setReason(undefined);
 
     try {
-      const opportunities = await discoverOpportunities(term, 5, { country });
-      setResults(opportunities);
-      setSearchedFor(term.trim());
+      const params = new URLSearchParams({ q: trimmed });
+      if (country) params.set("country", country);
+      const res = await fetch(`/api/discover?${params.toString()}`);
+      const data = (await res.json()) as DiscoverResponse;
+      setProducts(data.products ?? []);
+      setReason(data.reason);
+      setSearchedFor(trimmed);
+    } catch {
+      setProducts([]);
+      setReason("Something went wrong while searching Mercado Libre. Please try again.");
+      setSearchedFor(trimmed);
     } finally {
       setIsSearching(false);
     }
@@ -54,12 +62,14 @@ export default function ProductDiscovery({ onAnalyze }: ProductDiscoveryProps) {
 
   return (
     <div>
+      <MarketplaceStatusBar />
+
       <form onSubmit={handleSubmit} className="flex flex-col gap-3 sm:flex-row">
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={'e.g. "I have $500", "high margin", "trending kitchen products"...'}
+          placeholder='e.g. "iphone", "gaming mouse", "usb c charger"...'
           className="flex-1 rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-dark placeholder:text-slate-400 outline-none ring-orange-500/40 focus:border-orange-500 focus:ring-4 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
         />
         <button
@@ -83,64 +93,68 @@ export default function ProductDiscovery({ onAnalyze }: ProductDiscoveryProps) {
             {example}
           </button>
         ))}
-        <button
-          type="button"
-          onClick={() => handleExampleClick(IDK_EXAMPLE)}
-          className="rounded-full border border-dashed border-slate-300 px-3 py-1 italic text-slate-700 transition-colors hover:border-orange-400 hover:text-primary-dark dark:border-slate-700 dark:text-slate-300 dark:hover:border-orange-500 dark:hover:text-secondary"
-        >
-          {IDK_EXAMPLE}
-        </button>
       </div>
 
       {isSearching && (
         <div className="mt-12 flex flex-col items-center gap-3 text-slate-500">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-primary" />
-          <p className="text-sm">Scanning marketplaces for opportunities...</p>
+          <p className="text-sm">Searching Mercado Libre for real listings...</p>
         </div>
       )}
 
-      {results && !isSearching && (
+      {products && !isSearching && (
         <section className="mt-10">
           <h2 className="text-lg font-bold text-dark dark:text-slate-50">
             Top Product Opportunities
             {searchedFor ? ` for "${searchedFor}"` : ""}
           </h2>
 
+          {products.length === 0 && (
+            <p className="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-400">
+              {reason ?? "No products found."}
+            </p>
+          )}
+
           <div className="mt-4 space-y-4">
-            {results.map((opp, index) => {
-              const styles = RECOMMENDATION_STYLES[opp.recommendation];
+            {products.map((product, index) => {
+              const styles = RECOMMENDATION_STYLES[product.recommendation];
               return (
                 <div
-                  key={opp.productName}
+                  key={product.permalink}
                   className="rounded-2xl border border-slate-200 bg-white p-5 shadow-md shadow-slate-200/40 dark:border-slate-800 dark:bg-slate-950 dark:shadow-none sm:p-6"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex gap-3">
-                      {opp.imageUrl && (
+                      {product.imageUrl && (
                         // eslint-disable-next-line @next/next/no-img-element -- external marketplace image, not a local asset
                         <img
-                          src={opp.imageUrl}
-                          alt={opp.productName}
+                          src={product.imageUrl}
+                          alt={product.title}
                           className="h-14 w-14 shrink-0 rounded-lg border border-slate-200 object-cover dark:border-slate-800"
                         />
                       )}
                       <div>
                         <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                          {index + 1}. {opp.category}
+                          {index + 1}. {product.marketplaceName}
                         </p>
-                        <h3 className="mt-1 text-lg font-bold text-dark dark:text-slate-50">
-                          {opp.productName}
-                        </h3>
+                        <a
+                          href={product.permalink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1 block text-lg font-bold text-dark hover:underline dark:text-slate-50"
+                        >
+                          {product.title}
+                        </a>
                         <span
                           className={`mt-2 inline-block rounded-full px-3 py-1 text-xs font-semibold ${styles.badge}`}
                         >
-                          {opp.recommendation}
+                          {product.recommendation}
                         </span>
                       </div>
                     </div>
                     <div className="flex shrink-0 flex-col items-center">
                       <span className={`text-2xl font-bold ${styles.text}`}>
-                        {opp.opportunityScore}
+                        {product.opportunityScore}
                       </span>
                       <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
                         Score
@@ -149,31 +163,11 @@ export default function ProductDiscovery({ onAnalyze }: ProductDiscoveryProps) {
                   </div>
 
                   <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">
-                    {opp.shortExplanation}
+                    {product.shortExplanation}
                   </p>
-                  {!opp.shortExplanation.includes("$") && (
-                    <p className="mt-1 text-xs text-slate-500">
-                      {opp.dataConfidence === "hybrid" ? "Current" : "Typical"} price range: {opp.priceMin} - {opp.priceMax} {opp.priceCurrency}
-                    </p>
-                  )}
-
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {opp.marketplaceData.map((summary) => (
-                      <span
-                        key={summary.marketplace}
-                        className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${
-                          summary.available
-                            ? "bg-orange-50 text-primary-dark dark:bg-orange-500/10 dark:text-secondary"
-                            : "bg-slate-100 text-slate-400 dark:bg-slate-900 dark:text-slate-600"
-                        }`}
-                      >
-                        {summary.marketplaceName}
-                        {summary.available
-                          ? ` · ${summary.listingCount} listings`
-                          : " · Not Connected"}
-                      </span>
-                    ))}
-                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Current price: {product.price} {product.currency}
+                  </p>
 
                   <div className="mt-4 grid grid-cols-3 gap-2">
                     <div className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900/50">
@@ -181,7 +175,7 @@ export default function ProductDiscovery({ onAnalyze }: ProductDiscoveryProps) {
                         Demand
                       </div>
                       <div className="text-sm font-semibold text-dark dark:text-slate-100">
-                        {opp.demand}/100
+                        {product.dimensions.demand}/100
                       </div>
                     </div>
                     <div className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900/50">
@@ -189,7 +183,7 @@ export default function ProductDiscovery({ onAnalyze }: ProductDiscoveryProps) {
                         Competition
                       </div>
                       <div className="text-sm font-semibold text-dark dark:text-slate-100">
-                        {opp.competition}/100
+                        {product.dimensions.competition}/100
                       </div>
                     </div>
                     <div className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900/50">
@@ -197,14 +191,14 @@ export default function ProductDiscovery({ onAnalyze }: ProductDiscoveryProps) {
                         Margin
                       </div>
                       <div className="text-sm font-semibold text-dark dark:text-slate-100">
-                        {opp.marginPotential}/100
+                        {product.dimensions.margin}/100
                       </div>
                     </div>
                   </div>
 
                   <button
                     type="button"
-                    onClick={() => onAnalyze(opp.productName)}
+                    onClick={() => onAnalyze(product.title)}
                     className="mt-4 text-sm font-semibold text-primary-dark hover:underline dark:text-secondary"
                   >
                     Analyze this product →
@@ -214,12 +208,14 @@ export default function ProductDiscovery({ onAnalyze }: ProductDiscoveryProps) {
             })}
           </div>
 
-          <p className="mt-6 text-xs text-slate-500">
-            <span className="font-semibold text-slate-600 dark:text-slate-400">
-              AI + Marketplace Estimate —
-            </span>{" "}
-            Ranked using category heuristics blended with live marketplace listings where available.
-          </p>
+          {products.length > 0 && (
+            <p className="mt-6 text-xs text-slate-500">
+              <span className="font-semibold text-slate-600 dark:text-slate-400">
+                Real Marketplace Data —
+              </span>{" "}
+              Ranked using the AI Opportunity Engine on real Mercado Libre listings for this search.
+            </p>
+          )}
         </section>
       )}
     </div>

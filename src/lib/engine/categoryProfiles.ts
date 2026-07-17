@@ -22,7 +22,6 @@ export interface CategoryProfile {
   // reasoning so explanations never read as pure boilerplate.
   flavorPositives: string[];
   flavorRisks: string[];
-  candidates: string[];
 }
 
 function r(min: number, max: number): DimensionRange {
@@ -58,10 +57,6 @@ export const CATEGORY_PROFILES: CategoryProfile[] = [
       "Requires ongoing feature differentiation as specs become commoditized",
       "Enthusiast reviewers are quick to call out cheap build quality",
     ],
-    candidates: [
-      "RGB Gaming Mouse", "Mechanical Gaming Keyboard", "Gaming Headset With Mic",
-      "Gaming Mousepad XL", "Controller Charging Dock", "Webcam For Streaming",
-    ],
   },
   {
     category: "Office",
@@ -90,11 +85,6 @@ export const CATEGORY_PROFILES: CategoryProfile[] = [
     flavorRisks: [
       "Bulky items mean higher freight and higher damage-in-transit rates",
       "Assembly complexity can drive negative reviews if instructions are unclear",
-    ],
-    candidates: [
-      "Ergonomic Office Chair with Footrest", "Adjustable Monitor Stand",
-      "LED Desk Lamp", "Office Desk Cable Organizer", "Standing Desk Converter",
-      "Wrist Rest Keyboard Pad",
     ],
   },
   {
@@ -125,11 +115,6 @@ export const CATEGORY_PROFILES: CategoryProfile[] = [
       "Seasonal demand swings around holidays and New Year organizing trends",
       "Crowded with near-identical private-label listings",
     ],
-    candidates: [
-      "Kitchen Drawer Organizer", "Mini Air Fryer 2L", "Bamboo Cutting Board Set",
-      "Stainless Steel Knife Set", "Reusable Silicone Food Bags",
-      "Insulated Water Bottle 32oz",
-    ],
   },
   {
     category: "Beauty",
@@ -157,10 +142,6 @@ export const CATEGORY_PROFILES: CategoryProfile[] = [
     flavorRisks: [
       "Highly saturated market dominated by influencer-backed brands",
       "Labeling and ingredient-disclosure requirements add compliance overhead",
-    ],
-    candidates: [
-      "Vitamin C Facial Serum", "Ionic Hair Dryer", "Facial Cleansing Brush",
-      "Jade Facial Roller", "LED Makeup Mirror", "Silk Hair Wrap Towel",
     ],
   },
   {
@@ -190,10 +171,6 @@ export const CATEGORY_PROFILES: CategoryProfile[] = [
       "Demand spikes hard around New Year resolutions, then cools sharply",
       "Space is flooded with resolution-season sellers every January",
     ],
-    candidates: [
-      "Non-Slip Yoga Mat", "Resistance Bands Set", "Adjustable Dumbbell Set",
-      "Foam Roller", "Jump Rope Speed Cable", "Fitness Resistance Loop Bands",
-    ],
   },
   {
     category: "Pet",
@@ -222,10 +199,6 @@ export const CATEGORY_PROFILES: CategoryProfile[] = [
       "Sizing and fit variations across breeds increase returns",
       "Seasonal gifting spikes around holidays, quieter the rest of the year",
     ],
-    candidates: [
-      "Adjustable Dog Leash", "Orthopedic Pet Bed", "Interactive Cat Toy",
-      "Automatic Pet Feeder", "Pet Grooming Brush", "Dog Puzzle Toy",
-    ],
   },
   {
     category: "Baby",
@@ -251,11 +224,6 @@ export const CATEGORY_PROFILES: CategoryProfile[] = [
     flavorRisks: [
       "Strict safety and compliance standards raise the bar to sell credibly",
       "New sellers face a trust gap parents are cautious to cross",
-    ],
-    candidates: [
-      "Baby Nursery Night Light", "Silicone Baby Feeding Set",
-      "Baby Monitor With Camera", "Toddler Travel Backpack",
-      "Baby Swaddle Blanket Set", "Baby Bath Thermometer",
     ],
   },
   {
@@ -284,11 +252,6 @@ export const CATEGORY_PROFILES: CategoryProfile[] = [
       "Highly competitive with fast style and trend turnover",
       "Perceived quality is judged almost entirely on photos before purchase",
     ],
-    candidates: [
-      "Polarized Sunglasses", "Minimalist Wrist Watch",
-      "Leather Wallet RFID Blocking", "Layered Necklace Set",
-      "Woven Leather Belt", "Crossbody Handbag",
-    ],
   },
   {
     category: "Automotive",
@@ -315,11 +278,6 @@ export const CATEGORY_PROFILES: CategoryProfile[] = [
     flavorRisks: [
       "Vehicle fitment mismatches are a common source of returns",
       "Buyers compare heavily on price against big-box auto retailers",
-    ],
-    candidates: [
-      "Car Phone Mount Vent Clip", "Universal Car Seat Cover",
-      "Car Trunk Organizer", "LED Interior Car Lights", "Car Dash Cam 1080p",
-      "Car Vacuum Cleaner Portable",
     ],
   },
   {
@@ -348,11 +306,6 @@ export const CATEGORY_PROFILES: CategoryProfile[] = [
       "Strongly seasonal demand tied to weather and travel patterns",
       "Bulky items raise freight cost and warehouse footprint",
     ],
-    candidates: [
-      "Portable Camping Lantern", "Compact Camping Hammock",
-      "Waterproof Hiking Backpack", "Portable Camping Stove",
-      "Camping Sleeping Pad", "Collapsible Camping Chair",
-    ],
   },
   {
     category: "Garden",
@@ -379,11 +332,6 @@ export const CATEGORY_PROFILES: CategoryProfile[] = [
     flavorRisks: [
       "Sharp seasonal falloff outside of spring and summer",
       "Heavier or bulky items (soil, raised beds) raise shipping costs",
-    ],
-    candidates: [
-      "Self-Watering Planter Pot", "Garden Tool Set 5-Piece",
-      "Solar Garden Path Lights", "Raised Garden Bed Kit",
-      "Retractable Garden Hose", "Plant Grow Light Bulb",
     ],
   },
   {
@@ -412,11 +360,6 @@ export const CATEGORY_PROFILES: CategoryProfile[] = [
       "Buyers heavily favor established, trusted tool brands",
       "Price pressure from big-box hardware retailers",
     ],
-    candidates: [
-      "Magnetic Wristband Tool Holder", "Cordless Screwdriver Set",
-      "Tool Storage Organizer Bag", "Precision Screwdriver Kit",
-      "Adjustable Wrench Set", "LED Rechargeable Work Light",
-    ],
   },
   {
     category: "Home",
@@ -444,11 +387,6 @@ export const CATEGORY_PROFILES: CategoryProfile[] = [
     flavorRisks: [
       "Electrical and safety compliance requirements for powered items",
       "Highly fragmented category with many near-identical competitors",
-    ],
-    candidates: [
-      "Smart LED Night Light", "Decorative Throw Pillow Covers",
-      "Aromatherapy Essential Oil Diffuser", "Wall-Mounted Storage Rack",
-      "Cordless Handheld Vacuum", "Blackout Curtain Panels",
     ],
   },
   {
@@ -480,11 +418,6 @@ export const CATEGORY_PROFILES: CategoryProfile[] = [
       "Frequent price undercutting from low-cost overseas sellers",
       "Defect and buyer's-remorse returns run higher than most categories",
     ],
-    candidates: [
-      "Wireless Earbuds", "USB-C Fast Charger 30W", "Bluetooth Speaker Mini",
-      "Wireless Power Bank 10000mAh", "Smartwatch Fitness Band",
-      "Noise Cancelling Headphones",
-    ],
   },
 ];
 
@@ -515,7 +448,6 @@ export const FALLBACK_PROFILE: CategoryProfile = {
     "Limited category data available for this keyword",
     "Demand and competition estimates are broader without a matched category",
   ],
-  candidates: [],
 };
 
 export function findCategoryProfile(query: string): CategoryProfile | null {

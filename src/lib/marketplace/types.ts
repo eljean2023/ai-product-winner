@@ -13,6 +13,9 @@ export interface MarketplaceListing {
   reviewCount?: number;
   seller?: string;
   condition?: string;
+  category?: string;
+  freeShipping?: boolean;
+  location?: string;
 }
 
 export type MarketplaceId = "mercadolibre" | "amazon";

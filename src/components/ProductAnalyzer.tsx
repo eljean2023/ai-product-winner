@@ -2,7 +2,6 @@
 
 import { useImperativeHandle, useState, type FormEvent, type Ref } from "react";
 import {
-  analyzeProduct,
   DIMENSION_LABELS,
   RISK_DIMENSIONS,
   type AnalysisResult,
@@ -121,7 +120,10 @@ export default function ProductAnalyzer({ ref }: ProductAnalyzerProps) {
     setResult(null);
 
     try {
-      const analysis = await analyzeProduct(trimmed, { country });
+      const params = new URLSearchParams({ q: trimmed });
+      if (country) params.set("country", country);
+      const res = await fetch(`/api/analyze?${params.toString()}`);
+      const analysis = (await res.json()) as AnalysisResult;
       setResult(analysis);
     } catch {
       setError("Something went wrong while analyzing this product. Please try again.");

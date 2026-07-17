@@ -73,7 +73,11 @@ interface MlSearchItem {
   permalink?: string;
   thumbnail?: string;
   condition?: string;
+  category_id?: string;
   seller?: { id?: number; nickname?: string };
+  shipping?: { free_shipping?: boolean };
+  address?: { state_name?: string; city_name?: string };
+  seller_address?: { state?: { name?: string }; city?: { name?: string } };
 }
 
 interface MlSearchResponse {
@@ -85,7 +89,40 @@ interface MlReviewsResponse {
   total_reviews?: number;
 }
 
-function toListing(item: MlSearchItem): MarketplaceListing | null {
+interface MlCategoryResponse {
+  name?: string;
+}
+
+// Category names take a second lookup (search only returns category_id).
+// Cached indefinitely since a category's name essentially never changes —
+// best-effort only, a failed lookup just leaves `category` undefined.
+const categoryNameCache = new Map<string, string>();
+
+async function resolveCategoryName(categoryId: string | undefined, token: string): Promise<string | undefined> {
+  if (!categoryId) return undefined;
+  const cached = categoryNameCache.get(categoryId);
+  if (cached) return cached;
+
+  try {
+    const res = await fetchWithAuth(`https://api.mercadolibre.com/categories/${categoryId}`, token);
+    if (!res.ok) return undefined;
+    const data = (await res.json()) as MlCategoryResponse;
+    if (!data.name) return undefined;
+    categoryNameCache.set(categoryId, data.name);
+    return data.name;
+  } catch {
+    return undefined;
+  }
+}
+
+function locationFromItem(item: MlSearchItem): string | undefined {
+  const state = item.address?.state_name ?? item.seller_address?.state?.name;
+  const city = item.address?.city_name ?? item.seller_address?.city?.name;
+  if (city && state) return `${city}, ${state}`;
+  return state ?? city ?? undefined;
+}
+
+function toListing(item: MlSearchItem, categoryName: string | undefined): MarketplaceListing | null {
   if (!item.title || typeof item.price !== "number" || !item.permalink) return null;
   return {
     title: item.title,
@@ -95,6 +132,9 @@ function toListing(item: MlSearchItem): MarketplaceListing | null {
     imageUrl: item.thumbnail,
     seller: item.seller?.nickname,
     condition: item.condition,
+    category: categoryName,
+    freeShipping: item.shipping?.free_shipping,
+    location: locationFromItem(item),
   };
 }
 
@@ -140,7 +180,7 @@ async function search(query: string, opts: MarketplaceSearchOptions = {}): Promi
   }
 
   const country = getMercadoLibreCountry(opts.country);
-  const limit = Math.min(opts.limit ?? 20, 50);
+  const limit = Math.min(opts.limit ?? 30, 50);
   const url = mercadoLibreSearchUrl(country, trimmed, limit);
 
   let payload: MlSearchResponse;
@@ -164,8 +204,18 @@ async function search(query: string, opts: MarketplaceSearchOptions = {}): Promi
     );
   }
 
-  const listings = (payload.results ?? [])
-    .map(toListing)
+  const rawItems = payload.results ?? [];
+  const uniqueCategoryIds = Array.from(
+    new Set(rawItems.map((item) => item.category_id).filter((id): id is string => Boolean(id)))
+  );
+  const categoryNames = new Map<string, string | undefined>(
+    await Promise.all(
+      uniqueCategoryIds.map(async (id) => [id, await resolveCategoryName(id, token)] as const)
+    )
+  );
+
+  const listings = rawItems
+    .map((item) => toListing(item, item.category_id ? categoryNames.get(item.category_id) : undefined))
     .filter((l): l is MarketplaceListing => l !== null);
 
   if (listings.length === 0) {
@@ -200,7 +250,7 @@ async function search(query: string, opts: MarketplaceSearchOptions = {}): Promi
     averageRating: rating,
     totalReviews: total,
     topListing,
-    listings: listings.slice(0, 10),
+    listings,
   };
 }
 

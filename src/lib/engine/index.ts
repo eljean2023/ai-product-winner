@@ -24,6 +24,7 @@ export type {
   DataConfidence,
   DimensionKey,
   DimensionScores,
+  DiscoveryResult,
   EngineOptions,
   MarketIntelligenceProvider,
   ProductOpportunity,
