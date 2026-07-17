@@ -1,36 +1,40 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Product Hunter
 
-## Getting Started
+Find profitable products before investing money.
 
-First, run the development server:
+## What this is
+
+A single-page tool: enter a product idea or keyword, get an opportunity
+analysis back (category, demand, competition, price range, margin
+potential, a 0-100 opportunity score, a recommendation, and plain-language
+positive/risk signals).
+
+## Current version (foundation)
+
+The analysis in `src/lib/analyze.ts` is a rule-based heuristic — it
+matches the keyword against a curated set of category profiles (audio
+electronics, mobile accessories, computer peripherals, home & kitchen,
+etc.) and scores demand, competition, margin potential, and price
+positioning. Unmatched keywords fall back to a deterministic
+"General Merchandise" estimate so the same input always produces the
+same result. There is no external data source yet — this is intentional
+scaffolding for the next phase.
+
+## Planned integrations (not built yet)
+
+- Mercado Libre listing/search data
+- Amazon listing/search data
+- Real competitor analysis
+- Price tracking over time
+- Product trend signals
+
+Swapping in real data means replacing the body of `analyzeProduct()` in
+`src/lib/analyze.ts` with live lookups; the page and result UI don't need
+to change.
+
+## Run it
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
