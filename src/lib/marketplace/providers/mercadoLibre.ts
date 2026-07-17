@@ -6,9 +6,11 @@ import type {
   MarketplaceSummary,
 } from "../types";
 import { unavailableSummary } from "../types";
+import { getMercadoLibreCredentials, isMercadoLibreConfigured } from "./mercadoLibreConfig";
 
 const NAME = "Mercado Libre";
 const FETCH_TIMEOUT_MS = 8000;
+const DEBUG_PREFIX = "[ML]";
 
 // As of Mercado Libre's 2023 API changes, /sites/{site}/search requires an
 // OAuth access token even for public search results (unauthenticated calls
@@ -16,13 +18,9 @@ const FETCH_TIMEOUT_MS = 8000;
 // unlike Amazon's Associates program) at developers.mercadolibre.com
 // provides a client id/secret for the client_credentials grant. Until
 // those are configured, this provider reports "Not Connected" — it never
-// falls back to scraping.
-function readCredentials(): { clientId: string; clientSecret: string } | null {
-  const clientId = process.env.ML_CLIENT_ID;
-  const clientSecret = process.env.ML_CLIENT_SECRET;
-  if (!clientId || !clientSecret) return null;
-  return { clientId, clientSecret };
-}
+// falls back to scraping. Once configured, any *other* failure (bad
+// credentials, rate limit, network error, ...) must surface as its own
+// distinct reason — never get relabeled as "not connected".
 
 interface TokenCache {
   token: string;
@@ -31,12 +29,21 @@ interface TokenCache {
 
 let tokenCache: TokenCache | null = null;
 
-async function getAccessToken(): Promise<string | null> {
-  const credentials = readCredentials();
-  if (!credentials) return null;
+// Distinguishes "no token because nothing is configured" from "no token
+// because the token request itself failed" — the two must never share a
+// message, since the second case means credentials ARE present.
+type TokenResult = { token: string } | { error: string };
 
-  if (tokenCache && tokenCache.expiresAt > Date.now()) return tokenCache.token;
+async function getAccessToken(): Promise<TokenResult> {
+  const credentials = getMercadoLibreCredentials();
+  if (!credentials) return { error: "not-configured" };
 
+  if (tokenCache && tokenCache.expiresAt > Date.now()) {
+    console.log(`${DEBUG_PREFIX} token cache hit`);
+    return { token: tokenCache.token };
+  }
+
+  console.log(`${DEBUG_PREFIX} credentials detected, requesting access token`);
   try {
     const res = await fetch("https://api.mercadolibre.com/oauth/token", {
       method: "POST",
@@ -51,18 +58,41 @@ async function getAccessToken(): Promise<string | null> {
         client_secret: credentials.clientSecret,
       }).toString(),
     });
-    if (!res.ok) return null;
+
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      console.error(`${DEBUG_PREFIX} token request failed: ${res.status} ${detail}`);
+      if (res.status === 400 || res.status === 401) {
+        return {
+          error: `Mercado Libre rejected the ML_CLIENT_ID/ML_CLIENT_SECRET (HTTP ${res.status}). ${detail || "Check that the credentials match a valid Mercado Libre app."}`.trim(),
+        };
+      }
+      if (res.status === 429) {
+        return { error: "Mercado Libre token endpoint rate-limited this request (HTTP 429). Try again shortly." };
+      }
+      return { error: `Mercado Libre token request failed (HTTP ${res.status}). ${detail}`.trim() };
+    }
 
     const data = (await res.json()) as { access_token?: string; expires_in?: number };
-    if (!data.access_token) return null;
+    if (!data.access_token) {
+      console.error(`${DEBUG_PREFIX} token response had no access_token`, data);
+      return { error: "Mercado Libre token response did not include an access_token." };
+    }
 
+    console.log(`${DEBUG_PREFIX} token received, expires_in=${data.expires_in ?? 3600}s`);
     tokenCache = {
       token: data.access_token,
       expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000 - 60_000,
     };
-    return tokenCache.token;
-  } catch {
-    return null;
+    return { token: tokenCache.token };
+  } catch (err) {
+    console.error(`${DEBUG_PREFIX} token request threw`, err);
+    return {
+      error:
+        err instanceof Error
+          ? `Mercado Libre token request failed: ${err.message}`
+          : "Mercado Libre token request failed unexpectedly.",
+    };
   }
 }
 
@@ -169,8 +199,8 @@ async function search(query: string, opts: MarketplaceSearchOptions = {}): Promi
   const trimmed = query.trim();
   if (!trimmed) return unavailableSummary("mercadolibre", NAME, query, "No search query provided.");
 
-  const token = await getAccessToken();
-  if (!token) {
+  if (!isMercadoLibreConfigured()) {
+    console.log(`${DEBUG_PREFIX} not configured — ML_CLIENT_ID/ML_CLIENT_SECRET missing`);
     return unavailableSummary(
       "mercadolibre",
       NAME,
@@ -179,28 +209,58 @@ async function search(query: string, opts: MarketplaceSearchOptions = {}): Promi
     );
   }
 
+  const tokenResult = await getAccessToken();
+  if ("error" in tokenResult) {
+    // Credentials ARE present (checked above) — this is a real failure
+    // (bad secret, rate limit, network error, ...), never "not connected".
+    return unavailableSummary("mercadolibre", NAME, trimmed, tokenResult.error);
+  }
+  const token = tokenResult.token;
+
   const country = getMercadoLibreCountry(opts.country);
   const limit = Math.min(opts.limit ?? 30, 50);
   const url = mercadoLibreSearchUrl(country, trimmed, limit);
 
+  console.log(`${DEBUG_PREFIX} search request: ${url}`);
+
   let payload: MlSearchResponse;
   try {
     const res = await fetchWithAuth(url, token);
+    console.log(`${DEBUG_PREFIX} search response: ${res.status}`);
     if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      console.error(`${DEBUG_PREFIX} search failed: ${res.status} ${detail}`);
+      if (res.status === 401 || res.status === 403) {
+        return unavailableSummary(
+          "mercadolibre",
+          NAME,
+          trimmed,
+          `Mercado Libre (${country.label}) rejected the search request (HTTP ${res.status}). ${detail || "The access token may be invalid or lack the required scope."}`.trim()
+        );
+      }
+      if (res.status === 429) {
+        return unavailableSummary(
+          "mercadolibre",
+          NAME,
+          trimmed,
+          `Mercado Libre (${country.label}) rate-limited this search (HTTP 429). Try again shortly.`
+        );
+      }
       return unavailableSummary(
         "mercadolibre",
         NAME,
         trimmed,
-        `Mercado Libre (${country.label}) search returned ${res.status}.`
+        `Mercado Libre (${country.label}) search returned HTTP ${res.status}. ${detail}`.trim()
       );
     }
     payload = (await res.json()) as MlSearchResponse;
   } catch (err) {
+    console.error(`${DEBUG_PREFIX} search request threw`, err);
     return unavailableSummary(
       "mercadolibre",
       NAME,
       trimmed,
-      err instanceof Error ? err.message : "Mercado Libre search failed."
+      err instanceof Error ? `Mercado Libre search error: ${err.message}` : "Mercado Libre search failed."
     );
   }
 
@@ -257,6 +317,6 @@ async function search(query: string, opts: MarketplaceSearchOptions = {}): Promi
 export const mercadoLibreProvider: MarketplaceProvider = {
   id: "mercadolibre",
   name: NAME,
-  isConfigured: () => readCredentials() !== null,
+  isConfigured: isMercadoLibreConfigured,
   search,
 };
