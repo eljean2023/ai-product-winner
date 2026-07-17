@@ -1,10 +1,29 @@
 "use client";
 
 import { useImperativeHandle, useState, type FormEvent, type Ref } from "react";
-import { analyzeProduct, type AnalysisResult } from "@/lib/analyze";
-import { RECOMMENDATION_STYLES } from "./recommendationStyles";
+import {
+  analyzeProduct,
+  DIMENSION_LABELS,
+  RISK_DIMENSIONS,
+  type AnalysisResult,
+  type DimensionKey,
+} from "@/lib/engine";
+import { CONFIDENCE_STYLES, RECOMMENDATION_STYLES } from "./recommendationStyles";
 
-const EXAMPLES = ["wireless earbuds", "usb-c charger", "gaming mouse"];
+const EXAMPLES = ["wireless earbuds", "ergonomic office chair with footrest", "gaming mouse"];
+
+const DIMENSION_ORDER: DimensionKey[] = [
+  "demand",
+  "margin",
+  "competition",
+  "bundlePotential",
+  "brandOpportunity",
+  "repeatPurchase",
+  "supplierAvailability",
+  "shippingComplexity",
+  "trendStability",
+  "returnRisk",
+];
 
 // Lets another workflow (e.g. Product Discovery) hand off a specific
 // product name to analyze via a ref, without syncing state through props.
@@ -52,26 +71,26 @@ function ScoreRing({ score, ringClass }: { score: number; ringClass: string }) {
   );
 }
 
-function StatCard({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-}) {
+function favorability(key: DimensionKey, value: number): number {
+  return RISK_DIMENSIONS.includes(key) ? 100 - value : value;
+}
+
+function dimensionTint(key: DimensionKey, value: number): string {
+  const fav = favorability(key, value);
+  if (fav >= 70) return "border-emerald-200 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-500/10";
+  if (fav >= 40) return "border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900/50";
+  return "border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-500/10";
+}
+
+function DimensionCard({ dimKey, value }: { dimKey: DimensionKey; value: number }) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900/50">
+    <div className={`rounded-xl border px-4 py-3 ${dimensionTint(dimKey, value)}`}>
       <div className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-500">
-        {label}
+        {DIMENSION_LABELS[dimKey]}
       </div>
       <div className="mt-1 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-        {value}
+        {value}/100
       </div>
-      {hint && (
-        <div className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-500">{hint}</div>
-      )}
     </div>
   );
 }
@@ -181,11 +200,25 @@ export default function ProductAnalyzer({ ref }: ProductAnalyzerProps) {
               <h2 className="mt-1 text-2xl font-bold text-zinc-900 dark:text-zinc-50">
                 {result.productName}
               </h2>
-              <span
-                className={`mt-3 inline-block rounded-full px-3 py-1 text-sm font-semibold ${styles.badge}`}
-              >
-                {result.recommendation}
-              </span>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span
+                  className={`inline-block rounded-full px-3 py-1 text-sm font-semibold ${styles.badge}`}
+                >
+                  {result.recommendation}
+                </span>
+                <span
+                  className={`inline-block rounded-full px-3 py-1 text-sm font-semibold ${CONFIDENCE_STYLES[result.confidence]}`}
+                  title={result.confidenceReason}
+                >
+                  {result.confidence} Confidence
+                </span>
+              </div>
+              <p className="mt-2 max-w-sm text-xs text-zinc-500 dark:text-zinc-500">
+                {result.confidenceReason}
+              </p>
+              <p className="mt-2 text-sm font-medium text-zinc-600 dark:text-zinc-400">
+                Typical price range: ${result.priceMin} - ${result.priceMax}
+              </p>
             </div>
             <div className="flex flex-col items-center">
               <ScoreRing score={result.opportunityScore} ringClass={styles.ring} />
@@ -195,23 +228,19 @@ export default function ProductAnalyzer({ ref }: ProductAnalyzerProps) {
             </div>
           </div>
 
-          <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatCard label="Demand Potential" value={`${result.demand}/100`} />
-            <StatCard label="Competition Risk" value={`${result.competition}/100`} />
-            <StatCard label="Margin Potential" value={`${result.marginPotential}/100`} />
-            <StatCard
-              label="Price Opportunity"
-              value={`${result.priceOpportunity}/100`}
-              hint={`$${result.priceMin} - $${result.priceMax}`}
-            />
+          <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-5">
+            {DIMENSION_ORDER.map((dimKey) => (
+              <DimensionCard key={dimKey} dimKey={dimKey} value={result.dimensions[dimKey]} />
+            ))}
           </div>
 
           <p className="mt-4 text-xs text-zinc-500 dark:text-zinc-500">
             <span className="font-semibold text-zinc-600 dark:text-zinc-400">
               AI Market Estimate —
             </span>{" "}
-            Based on category patterns and product characteristics. Live
-            marketplace data integration coming soon.
+            Every dimension above is calculated independently from category
+            patterns and this product&apos;s own name. Live marketplace data
+            integration coming soon.
           </p>
 
           <div className="mt-8 grid gap-6 sm:grid-cols-2">

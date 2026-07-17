@@ -1,19 +1,18 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { discoverOpportunities, type ProductOpportunity } from "@/lib/discover";
+import { discoverOpportunities, type ProductOpportunity } from "@/lib/engine";
 import { RECOMMENDATION_STYLES } from "./recommendationStyles";
 
 const EXAMPLES = [
-  "USB",
-  "Kitchen",
+  "I have $500",
+  "Easy to ship",
+  "High margin",
+  "Trending kitchen products",
+  "Small products",
   "Gaming",
   "Pet",
   "Beauty",
-  "Fitness",
-  "Baby",
-  "Camping",
-  "Office",
 ];
 
 const IDK_EXAMPLE = "I don't know what to sell";
@@ -58,7 +57,7 @@ export default function ProductDiscovery({ onAnalyze }: ProductDiscoveryProps) {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={'e.g. USB, Kitchen, Gaming... or "I don\'t know what to sell"'}
+          placeholder={'e.g. "I have $500", "high margin", "trending kitchen products"...'}
           className="flex-1 rounded-xl border border-zinc-300 bg-white px-4 py-3 text-base text-zinc-900 placeholder:text-zinc-400 outline-none ring-emerald-500/40 focus:border-emerald-500 focus:ring-4 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
         />
         <button
@@ -140,6 +139,11 @@ export default function ProductDiscovery({ onAnalyze }: ProductDiscoveryProps) {
                   <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
                     {opp.shortExplanation}
                   </p>
+                  {!opp.shortExplanation.includes("$") && (
+                    <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-500">
+                      Typical price range: ${opp.priceMin} - ${opp.priceMax}
+                    </p>
+                  )}
 
                   <div className="mt-4 grid grid-cols-3 gap-2">
                     <div className="rounded-lg bg-zinc-50 px-3 py-2 dark:bg-zinc-900/50">
