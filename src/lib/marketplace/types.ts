@@ -43,7 +43,8 @@ export type MarketplaceId = "amazon" | "ebay" | "mercadolibre" | "walmart";
 // Identifies the data source/vendor behind a provider, distinct from
 // `MarketplaceId` (which storefront the data represents). This split exists
 // because more than one provider can serve the same marketplace — e.g.
-// Amazon data can come from SerpAPI today and the direct PA-API later.
+// Amazon data comes from the direct PA-API; SerpAPI is implemented as an
+// alternate vendor but is disabled (see marketplace/registry.ts).
 export type ProviderId =
   | "serpapi-amazon"
   | "serpapi-ebay"

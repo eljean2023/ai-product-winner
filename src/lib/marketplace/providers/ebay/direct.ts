@@ -6,10 +6,10 @@ import { getEbayAccessToken, invalidateEbayAccessToken } from "./oauth";
 
 // Direct eBay Browse API integration (official REST API, application
 // access token via client_credentials — no SerpAPI in between, no seller
-// login required). This is a separate credential path from
-// serpApiEbayProvider (../serpapi/ebay.ts); both can be registered at once
-// and both independently report "Not Connected" if their own credentials
-// are missing, so neither provider ever blocks the other.
+// login required). This is the only active eBay provider — serpApiEbayProvider
+// (../serpapi/ebay.ts) is implemented but disabled (not registered in
+// ../../registry.ts). This provider independently reports "Not Connected" if
+// its own credentials are missing, without affecting anything else.
 const NAME = "eBay";
 const SEARCH_URL = "https://api.ebay.com/buy/browse/v1/item_summary/search";
 const FETCH_TIMEOUT_MS = 8000;

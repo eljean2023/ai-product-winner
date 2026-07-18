@@ -2,11 +2,12 @@
 // real marketplace data. This is the only file in the engine that knows
 // marketplace data exists at all — it talks to the marketplace layer only
 // through `searchAllMarketplaces`, never a specific provider, so the engine
-// stays completely provider-independent: SerpAPI is just one
-// MarketplaceProvider among several (Mercado Libre, the direct Amazon
-// PA-API, and the prepared eBay-direct/Walmart/Keepa integrations) — none of
-// them is architected around, and any of them can be added, replaced, or
-// removed in @/lib/marketplace/registry without a single line changing here.
+// stays completely provider-independent: the direct Amazon PA-API, eBay
+// Browse API, Mercado Libre, and Walmart Affiliate API are each just a
+// MarketplaceProvider entry — none of them is architected around, and any
+// of them can be added, replaced, or removed in @/lib/marketplace/registry
+// without a single line changing here. (SerpAPI is implemented but disabled
+// — not part of the active registry.)
 import { searchAllMarketplaces } from "@/lib/marketplace/registry";
 import type { MarketplaceSummary, ProductListing } from "@/lib/marketplace/types";
 import { findBrand } from "./brands";
