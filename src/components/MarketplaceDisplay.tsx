@@ -3,6 +3,7 @@ import type { MarketplaceSummary } from "@/lib/marketplace";
 const MARKETPLACE_ICON: Record<string, string> = {
   mercadolibre: "🛒",
   amazon: "📦",
+  ebay: "🏷️",
 };
 
 export function MarketplaceChip({ summary }: { summary: MarketplaceSummary }) {

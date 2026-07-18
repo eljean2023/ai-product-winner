@@ -4,11 +4,11 @@
 // through `searchAllMarketplaces`, never a specific provider, so the engine
 // stays decoupled from where the data actually comes from.
 import { searchAllMarketplaces } from "@/lib/marketplace/registry";
-import { mercadoLibreProvider } from "@/lib/marketplace/providers/mercadoLibre";
 import type { MarketplaceSummary } from "@/lib/marketplace/types";
 import { getCategoryProfileByName } from "./categoryProfiles";
 import { analyzeProduct as heuristicAnalyze, pickRecommendation } from "./heuristicProvider";
 import { scoreMarketplaceProduct } from "./productScoring";
+import type { MarketContext } from "./productScoring";
 import type {
   AnalysisResult,
   DataConfidence,
@@ -21,14 +21,13 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-// Prefer Mercado Libre as the primary real price band (per product
-// priority), falling back to any other available marketplace. Never mixes
-// currencies from two different marketplaces into one min/max band.
+// Prefer the first available marketplace in registry priority order (see
+// marketplaceProviders in registry.ts) as the primary real price band.
+// Never mixes currencies from two different marketplaces into one min/max
+// band. No marketplace is hardcoded here — priority is entirely a property
+// of registration order, so it never blocks on any one provider.
 function pickPrimarySummary(summaries: MarketplaceSummary[]): MarketplaceSummary | undefined {
-  return (
-    summaries.find((s) => s.marketplace === "mercadolibre" && s.available) ??
-    summaries.find((s) => s.available)
-  );
+  return summaries.find((s) => s.available);
 }
 
 interface MarketplaceAdjustment {
@@ -158,11 +157,14 @@ export async function analyzeProduct(rawQuery: string, opts: EngineOptions = {})
   return withMarketplaceData(base, summaries);
 }
 
-// Searches Mercado Libre directly with the user's exact query and scores
-// each real listing returned — never a candidate name we made up. Amazon is
-// intentionally not queried here (Discovery is Mercado-Libre-only per the
-// product spec); analyzeProduct() below still enriches from every
-// marketplace since it's scoring one already-known product name.
+// Searches every registered marketplace with the user's exact query and
+// scores each real listing returned — never a candidate name we made up.
+// Each available marketplace gets its own MarketContext (never mixes
+// listing counts, seller counts, or price bands across marketplaces), then
+// every marketplace's scored listings are merged into one ranked list. A
+// marketplace that isn't configured or fails simply contributes nothing —
+// see searchAllMarketplaces, which already turns that into a graceful
+// `unavailable` summary instead of a thrown error.
 export async function discoverOpportunities(
   rawQuery: string,
   limit = 30,
@@ -171,23 +173,27 @@ export async function discoverOpportunities(
   const trimmed = rawQuery.trim();
   if (!trimmed) return { products: [] };
 
-  const summary = await mercadoLibreProvider.search(trimmed, { country: opts.country, limit: 30 });
+  const summaries = await searchAllMarketplaces(trimmed, { country: opts.country, limit: 30 });
+  const available = summaries.filter((s) => s.available && s.listings.length > 0);
 
-  if (!summary.available || summary.listings.length === 0) {
-    return { products: [], reason: summary.reason ?? "No products found." };
+  if (available.length === 0) {
+    const reason = summaries.find((s) => s.reason)?.reason;
+    return { products: [], reason: reason ?? "No products found across connected marketplaces." };
   }
 
-  const market = {
-    marketplace: summary.marketplace,
-    marketplaceName: summary.marketplaceName,
-    totalListings: summary.listingCount,
-    totalSellers: summary.sellerCount ?? summary.listingCount,
-    priceMin: summary.minPrice ?? summary.averagePrice ?? 0,
-    priceMax: summary.maxPrice ?? summary.averagePrice ?? 0,
-    currency: summary.currency ?? "",
-  };
+  const scored = available.flatMap((summary) => {
+    const market: MarketContext = {
+      marketplace: summary.marketplace,
+      marketplaceName: summary.marketplaceName,
+      totalListings: summary.listingCount,
+      totalSellers: summary.sellerCount ?? summary.listingCount,
+      priceMin: summary.minPrice ?? summary.averagePrice ?? 0,
+      priceMax: summary.maxPrice ?? summary.averagePrice ?? 0,
+      currency: summary.currency ?? "",
+    };
+    return summary.listings.map((listing) => scoreMarketplaceProduct(listing, market));
+  });
 
-  const scored = summary.listings.map((listing) => scoreMarketplaceProduct(listing, market));
   scored.sort((a, b) => b.opportunityScore - a.opportunityScore);
 
   return { products: scored.slice(0, limit) };

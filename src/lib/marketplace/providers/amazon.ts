@@ -219,7 +219,8 @@ async function search(query: string): Promise<MarketplaceSummary> {
 }
 
 export const amazonProvider: MarketplaceProvider = {
-  id: "amazon",
+  id: "amazon-paapi",
+  marketplace: "amazon",
   name: NAME,
   isConfigured: () => readConfig() !== null,
   search,

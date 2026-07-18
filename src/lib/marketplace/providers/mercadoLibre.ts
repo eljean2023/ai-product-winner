@@ -253,6 +253,7 @@ async function search(query: string, opts: MarketplaceSearchOptions = {}): Promi
 
 export const mercadoLibreProvider: MarketplaceProvider = {
   id: "mercadolibre",
+  marketplace: "mercadolibre",
   name: NAME,
   isConfigured: isMercadoLibreConfigured,
   search,

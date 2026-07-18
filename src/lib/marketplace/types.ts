@@ -18,7 +18,13 @@ export interface MarketplaceListing {
   location?: string;
 }
 
-export type MarketplaceId = "mercadolibre" | "amazon";
+export type MarketplaceId = "amazon" | "ebay" | "mercadolibre";
+
+// Identifies the data source/vendor behind a provider, distinct from
+// `MarketplaceId` (which storefront the data represents). This split exists
+// because more than one provider can serve the same marketplace — e.g.
+// Amazon data can come from SerpAPI today and the direct PA-API later.
+export type ProviderId = "serpapi-amazon" | "serpapi-ebay" | "mercadolibre" | "amazon-paapi";
 
 // Every field beyond `available`/`marketplace`/`query`/`listingCount` is
 // optional on purpose: if real data can't be retrieved, the field is simply
@@ -47,7 +53,9 @@ export interface MarketplaceSearchOptions {
 }
 
 export interface MarketplaceProvider {
-  id: MarketplaceId;
+  id: ProviderId;
+  // Which storefront this provider's data represents — see `ProviderId`.
+  marketplace: MarketplaceId;
   name: string;
   isConfigured(): boolean;
   search(query: string, opts?: MarketplaceSearchOptions): Promise<MarketplaceSummary>;

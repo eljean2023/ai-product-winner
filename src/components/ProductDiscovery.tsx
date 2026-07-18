@@ -3,7 +3,6 @@
 import { useState, type FormEvent } from "react";
 import type { ProductOpportunity } from "@/lib/engine";
 import { useMarketplaceCountry } from "./MarketplaceCountryContext";
-import MarketplaceStatusBar from "./MarketplaceStatusBar";
 import { RECOMMENDATION_STYLES } from "./recommendationStyles";
 
 const EXAMPLES = ["iphone", "gaming mouse", "usb c charger", "office chair", "wireless earbuds"];
@@ -43,7 +42,7 @@ export default function ProductDiscovery({ onAnalyze }: ProductDiscoveryProps) {
       setSearchedFor(trimmed);
     } catch {
       setProducts([]);
-      setReason("Something went wrong while searching Mercado Libre. Please try again.");
+      setReason("Something went wrong while searching marketplaces. Please try again.");
       setSearchedFor(trimmed);
     } finally {
       setIsSearching(false);
@@ -62,10 +61,9 @@ export default function ProductDiscovery({ onAnalyze }: ProductDiscoveryProps) {
 
   return (
     <div>
-      <MarketplaceStatusBar />
-
       <form onSubmit={handleSubmit} className="flex flex-col gap-3 sm:flex-row">
         <input
+          id="discovery-search-input" // must match the id Hero.tsx's CTA scrolls to/focuses
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -98,7 +96,7 @@ export default function ProductDiscovery({ onAnalyze }: ProductDiscoveryProps) {
       {isSearching && (
         <div className="mt-12 flex flex-col items-center gap-3 text-slate-500">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-primary" />
-          <p className="text-sm">Searching Mercado Libre for real listings...</p>
+          <p className="text-sm">Searching marketplaces for real listings...</p>
         </div>
       )}
 
@@ -213,7 +211,7 @@ export default function ProductDiscovery({ onAnalyze }: ProductDiscoveryProps) {
               <span className="font-semibold text-slate-600 dark:text-slate-400">
                 Real Marketplace Data —
               </span>{" "}
-              Ranked using the AI Opportunity Engine on real Mercado Libre listings for this search.
+              Ranked using the AI Opportunity Engine on real listings from every connected marketplace for this search.
             </p>
           )}
         </section>

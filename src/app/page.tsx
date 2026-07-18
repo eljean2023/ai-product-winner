@@ -1,6 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Hero from "@/components/landing/Hero";
+import HowItWorks from "@/components/landing/HowItWorks";
+import MarketplaceIntelligence from "@/components/landing/MarketplaceIntelligence";
 import ProductAnalyzer, {
   type ProductAnalyzerHandle,
 } from "@/components/ProductAnalyzer";
@@ -19,22 +22,20 @@ export default function Home() {
 
   return (
     <div className="flex flex-1 flex-col items-center px-4 py-12 font-sans sm:px-6 sm:py-16">
-      <main className="w-full max-w-2xl">
-        <div className="text-center">
-          <span className="inline-block rounded-full bg-gradient-to-r from-primary/10 to-secondary/10 px-4 py-1 text-xs font-semibold uppercase tracking-wide text-primary-dark dark:text-secondary">
-            Product Research Platform
-          </span>
-          <h1 className="mt-4 text-3xl font-bold tracking-tight text-dark dark:text-slate-50 sm:text-4xl">
-            AI Product Hunter
-          </h1>
-          <p className="mt-3 text-base text-slate-600 dark:text-slate-400">
+      <main className="w-full max-w-4xl">
+        <Hero />
+        <HowItWorks />
+        <MarketplaceIntelligence />
+
+        <div className="mx-auto mt-16 max-w-2xl text-center">
+          <p className="text-sm text-slate-500 dark:text-slate-500">
             {mode === "discover"
               ? "Not sure what to sell? Discover product opportunities worth exploring."
-              : "Find profitable products before investing money."}
+              : "Or analyze a specific product idea below."}
           </p>
         </div>
 
-        <div className="mt-8 flex gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="mx-auto mt-4 flex max-w-2xl gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <button
             type="button"
             onClick={() => setMode("discover")}

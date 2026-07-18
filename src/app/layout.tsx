@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import CountrySelect from "@/components/CountrySelect";
 import { MarketplaceCountryProvider } from "@/components/MarketplaceCountryContext";
 import "./globals.css";
 
@@ -41,7 +40,6 @@ export default function RootLayout({
                   AI Product Hunter
                 </span>
               </div>
-              <CountrySelect />
             </div>
           </header>
           <div className="flex flex-1 flex-col">{children}</div>
