@@ -1,12 +1,12 @@
 "use client";
 
 import { useImperativeHandle, useMemo, useState, type FormEvent, type Ref } from "react";
-import type { AnalysisResult, DimensionKey } from "@/lib/engine";
+import type { AnalysisResult, DataSource, DimensionKey } from "@/lib/engine";
 import { DIMENSION_LABELS, RISK_DIMENSIONS } from "@/lib/engine/types";
 import { generateOpportunityInsights } from "@/lib/engine/opportunityInsights";
 import { MarketplaceButtons, MarketplaceChip } from "./MarketplaceDisplay";
 import { useMarketplaceCountry } from "./MarketplaceCountryContext";
-import { CONFIDENCE_STYLES, RECOMMENDATION_STYLES } from "./recommendationStyles";
+import { CONFIDENCE_STYLES, DATA_SOURCE_STYLES, RECOMMENDATION_STYLES } from "./recommendationStyles";
 
 const EXAMPLES = ["wireless earbuds", "ergonomic office chair with footrest", "gaming mouse"];
 
@@ -81,15 +81,45 @@ function dimensionTint(key: DimensionKey, value: number): string {
   return "border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-500/10";
 }
 
-function DimensionCard({ dimKey, value }: { dimKey: DimensionKey; value: number }) {
+function DimensionCard({
+  dimKey,
+  value,
+  source,
+}: {
+  dimKey: DimensionKey;
+  value: number;
+  source?: DataSource;
+}) {
+  const sourceStyle = source ? DATA_SOURCE_STYLES[source] : null;
   return (
     <div className={`rounded-xl border px-4 py-3 ${dimensionTint(dimKey, value)}`}>
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
-        {DIMENSION_LABELS[dimKey]}
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+          {DIMENSION_LABELS[dimKey]}
+        </div>
+        {sourceStyle && (
+          <span
+            className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${sourceStyle.dot}`}
+            title={sourceStyle.label}
+          />
+        )}
       </div>
       <div className="mt-1 text-sm font-semibold text-dark dark:text-slate-100">
         {value}/100
       </div>
+    </div>
+  );
+}
+
+function DataSourceLegend() {
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+      {(Object.keys(DATA_SOURCE_STYLES) as DataSource[]).map((key) => (
+        <span key={key} className="inline-flex items-center gap-1.5">
+          <span className={`inline-block h-1.5 w-1.5 rounded-full ${DATA_SOURCE_STYLES[key].dot}`} />
+          {DATA_SOURCE_STYLES[key].label}
+        </span>
+      ))}
     </div>
   );
 }
@@ -264,9 +294,15 @@ export default function ProductAnalyzer({ ref }: ProductAnalyzerProps) {
 
           <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-5">
             {DIMENSION_ORDER.map((dimKey) => (
-              <DimensionCard key={dimKey} dimKey={dimKey} value={result.dimensions[dimKey]} />
+              <DimensionCard
+                key={dimKey}
+                dimKey={dimKey}
+                value={result.dimensions[dimKey]}
+                source={result.dimensionSources[dimKey]}
+              />
             ))}
           </div>
+          <DataSourceLegend />
 
           <p className="mt-4 text-xs text-slate-500">
             <span className="font-semibold text-slate-600 dark:text-slate-400">
@@ -279,21 +315,32 @@ export default function ProductAnalyzer({ ref }: ProductAnalyzerProps) {
 
           {insights && (
             <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/50">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  AI Recommendation
-                </span>
-                <span
-                  className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${RECOMMENDATION_STYLES[insights.recommendation].badge}`}
-                >
-                  {insights.recommendation}
-                </span>
-              </div>
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                AI Recommendation
+              </span>
               <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{insights.summary}</p>
               <p className="mt-3 text-sm text-slate-700 dark:text-slate-300">
                 <span className="font-semibold text-dark dark:text-slate-100">Selling Strategy:</span>{" "}
                 {insights.suggestedStrategy}
               </p>
+              {insights.alternatives.length > 0 && (
+                <div className="mt-4">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Better opportunities to pursue instead
+                  </span>
+                  <ul className="mt-2 space-y-1.5">
+                    {insights.alternatives.map((alternative) => (
+                      <li
+                        key={alternative}
+                        className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300"
+                      >
+                        <span className="text-primary-dark dark:text-secondary">→</span>
+                        <span>{alternative}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
 

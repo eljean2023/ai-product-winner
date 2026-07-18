@@ -11,6 +11,18 @@ export type DataConfidence = "hybrid" | "heuristic-only";
 
 export type ConfidenceLevel = "High" | "Medium" | "Low";
 
+// Where a single dimension's number actually came from, so the UI can be
+// honest per-dimension instead of one blanket "hybrid"/"heuristic" label for
+// the whole result:
+// - "real": aggregated directly from live marketplace numbers (price,
+//   rating, review count, listing/seller count).
+// - "heuristic": a deterministic rule applied to real input (e.g. brand
+//   keyword detection, category-band lookup).
+// - "ai-estimate": no real per-product proxy exists yet, so it falls back to
+//   a category-baseline estimate — these are exactly the dimensions Keepa
+//   and the other planned signals (see AGENTS.md) will eventually replace.
+export type DataSource = "real" | "heuristic" | "ai-estimate";
+
 // Every product is scored across these independent dimensions. Dimensions
 // marked as "risk" in RISK_DIMENSIONS are unfavorable at high values (e.g.
 // Competition Risk); the rest are favorable at high values.
@@ -58,6 +70,9 @@ export interface AnalysisResult {
   confidence: ConfidenceLevel;
   confidenceReason: string;
   dimensions: DimensionScores;
+  // Per-dimension provenance — see DataSource. Optional keys default to
+  // unknown/undocumented in the UI rather than a hard error.
+  dimensionSources: Partial<Record<DimensionKey, DataSource>>;
   priceMin: number;
   priceMax: number;
   // Currency of priceMin/priceMax — "USD" for the heuristic estimate, or
@@ -98,6 +113,7 @@ export interface ProductOpportunity {
   opportunityScore: number;
   recommendation: Recommendation;
   dimensions: DimensionScores;
+  dimensionSources: Partial<Record<DimensionKey, DataSource>>;
   shortExplanation: string;
   sellingAngle: string;
   dataConfidence: DataConfidence;

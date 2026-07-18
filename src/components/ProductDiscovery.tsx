@@ -1,9 +1,31 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import type { ProductOpportunity } from "@/lib/engine";
+import type { DimensionKey, ProductOpportunity } from "@/lib/engine";
+import { generateOpportunityInsights } from "@/lib/engine/opportunityInsights";
 import { useMarketplaceCountry } from "./MarketplaceCountryContext";
-import { RECOMMENDATION_STYLES } from "./recommendationStyles";
+import { DATA_SOURCE_STYLES, RECOMMENDATION_STYLES } from "./recommendationStyles";
+
+function StatTile({ label, dimKey, product }: { label: string; dimKey: DimensionKey; product: ProductOpportunity }) {
+  const source = product.dimensionSources[dimKey];
+  const sourceStyle = source ? DATA_SOURCE_STYLES[source] : null;
+  return (
+    <div className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900/50">
+      <div className="flex items-center justify-between gap-1">
+        <div className="text-[10px] uppercase tracking-wide text-slate-500">{label}</div>
+        {sourceStyle && (
+          <span
+            className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${sourceStyle.dot}`}
+            title={sourceStyle.label}
+          />
+        )}
+      </div>
+      <div className="text-sm font-semibold text-dark dark:text-slate-100">
+        {product.dimensions[dimKey]}/100
+      </div>
+    </div>
+  );
+}
 
 const EXAMPLES = ["iphone", "gaming mouse", "usb c charger", "office chair", "wireless earbuds"];
 
@@ -115,7 +137,8 @@ export default function ProductDiscovery({ onAnalyze }: ProductDiscoveryProps) {
 
           <div className="mt-4 space-y-4">
             {products.map((product, index) => {
-              const styles = RECOMMENDATION_STYLES[product.recommendation];
+              const insights = generateOpportunityInsights({ ...product, productName: product.title });
+              const styles = RECOMMENDATION_STYLES[insights.recommendation];
               return (
                 <div
                   key={product.permalink}
@@ -146,7 +169,7 @@ export default function ProductDiscovery({ onAnalyze }: ProductDiscoveryProps) {
                         <span
                           className={`mt-2 inline-block rounded-full px-3 py-1 text-xs font-semibold ${styles.badge}`}
                         >
-                          {product.recommendation}
+                          {insights.recommendation}
                         </span>
                       </div>
                     </div>
@@ -167,31 +190,32 @@ export default function ProductDiscovery({ onAnalyze }: ProductDiscoveryProps) {
                     Current price: {product.price} {product.currency}
                   </p>
 
+                  {insights.recommendation === "High Risk" && (
+                    <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/60 dark:bg-amber-500/10">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+                        Why this isn&apos;t recommended
+                      </p>
+                      <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">{insights.summary}</p>
+                      {insights.alternatives.length > 0 && (
+                        <ul className="mt-2 space-y-1">
+                          {insights.alternatives.map((alternative) => (
+                            <li
+                              key={alternative}
+                              className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300"
+                            >
+                              <span className="text-primary-dark dark:text-secondary">→</span>
+                              <span>{alternative}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+
                   <div className="mt-4 grid grid-cols-3 gap-2">
-                    <div className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900/50">
-                      <div className="text-[10px] uppercase tracking-wide text-slate-500">
-                        Demand
-                      </div>
-                      <div className="text-sm font-semibold text-dark dark:text-slate-100">
-                        {product.dimensions.demand}/100
-                      </div>
-                    </div>
-                    <div className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900/50">
-                      <div className="text-[10px] uppercase tracking-wide text-slate-500">
-                        Competition
-                      </div>
-                      <div className="text-sm font-semibold text-dark dark:text-slate-100">
-                        {product.dimensions.competition}/100
-                      </div>
-                    </div>
-                    <div className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900/50">
-                      <div className="text-[10px] uppercase tracking-wide text-slate-500">
-                        Margin
-                      </div>
-                      <div className="text-sm font-semibold text-dark dark:text-slate-100">
-                        {product.dimensions.margin}/100
-                      </div>
-                    </div>
+                    <StatTile label="Demand" dimKey="demand" product={product} />
+                    <StatTile label="Competition" dimKey="competition" product={product} />
+                    <StatTile label="Margin" dimKey="margin" product={product} />
                   </div>
 
                   <button
@@ -207,12 +231,22 @@ export default function ProductDiscovery({ onAnalyze }: ProductDiscoveryProps) {
           </div>
 
           {products.length > 0 && (
-            <p className="mt-6 text-xs text-slate-500">
-              <span className="font-semibold text-slate-600 dark:text-slate-400">
-                AI Market Estimate —
-              </span>{" "}
-              Ranked using real listings from every connected marketplace, scored by the AI Opportunity Engine. Scores combine marketplace signals and category intelligence — additional providers like Keepa will improve historical analysis.
-            </p>
+            <div className="mt-6">
+              <p className="text-xs text-slate-500">
+                <span className="font-semibold text-slate-600 dark:text-slate-400">
+                  AI Market Estimate —
+                </span>{" "}
+                Ranked using real listings from every connected marketplace, scored by the AI Opportunity Engine. Scores combine marketplace signals and category intelligence — additional providers like Keepa will improve historical analysis.
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+                {(Object.keys(DATA_SOURCE_STYLES) as (keyof typeof DATA_SOURCE_STYLES)[]).map((key) => (
+                  <span key={key} className="inline-flex items-center gap-1.5">
+                    <span className={`inline-block h-1.5 w-1.5 rounded-full ${DATA_SOURCE_STYLES[key].dot}`} />
+                    {DATA_SOURCE_STYLES[key].label}
+                  </span>
+                ))}
+              </div>
+            </div>
           )}
         </section>
       )}

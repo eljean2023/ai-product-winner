@@ -25,6 +25,7 @@ export type {
   AnalysisResult,
   ConfidenceLevel,
   DataConfidence,
+  DataSource,
   DimensionKey,
   DimensionScores,
   DiscoveryResult,

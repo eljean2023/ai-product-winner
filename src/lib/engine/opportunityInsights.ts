@@ -4,7 +4,24 @@
 // synchronous read of fields the scoring engine already computed — it never
 // recomputes a score or dimension, only interprets what's already there.
 import { detectBrand, findBrand } from "./brands";
-import type { AnalysisResult, Recommendation } from "./types";
+import { DIMENSION_LABELS, RISK_DIMENSIONS, type DimensionKey, type DimensionScores, type Recommendation } from "./types";
+
+// The minimal shape computeRecommendation needs — satisfied structurally by
+// both AnalysisResult (heuristic/hybrid single-product analysis) and
+// ProductOpportunity (per-listing discovery results), so both paths run the
+// exact same recommendation logic instead of each keeping their own copy.
+export interface ScoredSubject {
+  opportunityScore: number;
+  dimensions: DimensionScores;
+}
+
+// What generateOpportunityInsights needs beyond the score/dimensions to
+// produce seller-facing copy. AnalysisResult satisfies this directly;
+// ProductOpportunity is adapted with `{ ...product, productName: product.title }`.
+export interface InsightSubject extends ScoredSubject {
+  productName: string;
+  category: string;
+}
 
 export interface OpportunityInsights {
   recommendation: Recommendation;
@@ -14,6 +31,10 @@ export interface OpportunityInsights {
   suggestedStrategy: string;
   targetCustomer: string;
   differentiationIdeas: string[];
+  // Concrete "sell this instead" suggestions — populated only for High Risk
+  // results (accessories/complements when brand-dominated, a narrower niche
+  // when saturated/low-scoring) so a rejection comes with a next move.
+  alternatives: string[];
 }
 
 interface CategoryInsightProfile {
@@ -217,8 +238,8 @@ function inferTargetCustomer(title: string, category: string): string {
 // marketplace signals — Keepa price/sales-rank history, review velocity,
 // Buy Box, seller concentration, marketplace diversity, ...) so genuinely
 // strong products naturally clear 80+, not lowering these numbers.
-function computeRecommendation(result: AnalysisResult): Recommendation {
-  const { opportunityScore, dimensions } = result;
+export function computeRecommendation(subject: ScoredSubject): Recommendation {
+  const { opportunityScore, dimensions } = subject;
   const brandDominated = dimensions.brandOpportunity < BRAND_DOMINATED_THRESHOLD;
   const saturationHigh = dimensions.marketSaturation >= SATURATION_HIGH_THRESHOLD;
 
@@ -239,30 +260,47 @@ function computeRecommendation(result: AnalysisResult): Recommendation {
   return "Possible Opportunity";
 }
 
+// Named, business-relevant dimensions worth citing by name in a "why" — the
+// full dimension set includes a few (bundlePotential, trendStability, ...)
+// that are too abstract to read as a cause in a sentence.
+const NAMEABLE_DIMENSIONS: DimensionKey[] = ["demand", "margin", "competition", "marketSaturation", "returnRisk"];
+
+// Names the weakest contributing factors behind a low score, so a generic
+// High Risk verdict states a concrete reason grounded in the actual numbers
+// instead of just restating the score.
+function weakestFactors(dimensions: DimensionScores, count = 2): string[] {
+  const scored = NAMEABLE_DIMENSIONS.map((key) => ({
+    key,
+    favorability: RISK_DIMENSIONS.includes(key) ? 100 - dimensions[key] : dimensions[key],
+  }));
+  scored.sort((a, b) => a.favorability - b.favorability);
+  return scored.slice(0, count).map((s) => `${DIMENSION_LABELS[s.key]} (${dimensions[s.key]}/100)`);
+}
+
 function buildSummary(
-  result: AnalysisResult,
+  subject: InsightSubject,
   recommendation: Recommendation,
   branded: boolean,
   brandName: string | null
 ): string {
-  const score = result.opportunityScore;
+  const score = subject.opportunityScore;
   if (branded) {
-    return `${result.productName} shows strong demand (score ${score}/100), but ${brandName} dominates this market — little room for a new seller to compete on this exact product.`;
+    return `${subject.productName} shows strong demand (score ${score}/100), but ${brandName} dominates this market — little room for a new seller to compete on this exact product.`;
   }
   if (recommendation === "Strong Opportunity") {
-    return `${result.productName} scores ${score}/100 with healthy margins, manageable competition, and real private-label room — one of the stronger opportunities in this search.`;
+    return `${subject.productName} scores ${score}/100 with healthy margins, manageable competition, and real private-label room — one of the stronger opportunities in this search.`;
   }
   if (recommendation === "High Risk") {
-    if (result.dimensions.marketSaturation >= SATURATION_HIGH_THRESHOLD) {
-      return `${result.productName} scores ${score}/100 in an already saturated market — thousands of near-identical listings make it hard for a new seller to stand out.`;
+    if (subject.dimensions.marketSaturation >= SATURATION_HIGH_THRESHOLD) {
+      return `${subject.productName} scores ${score}/100 in an already saturated market — thousands of near-identical listings make it hard for a new seller to stand out.`;
     }
-    return `${result.productName} scores only ${score}/100 — the numbers don't yet support a new seller entering this exact product.`;
+    return `${subject.productName} scores only ${score}/100 — driven mainly by weak ${weakestFactors(subject.dimensions).join(" and ")} — the numbers don't yet support a new seller entering this exact product.`;
   }
-  return `${result.productName} scores ${score}/100 — a workable opportunity, but success will depend on real differentiation.`;
+  return `${subject.productName} scores ${score}/100 — a workable opportunity, but success will depend on real differentiation.`;
 }
 
 function buildStrategy(
-  result: AnalysisResult,
+  subject: InsightSubject,
   recommendation: Recommendation,
   branded: boolean,
   brandName: string | null,
@@ -273,7 +311,7 @@ function buildStrategy(
     return `High demand product but not recommended for new sellers due to strong brand dominance from ${brandName}.`;
   }
   if (recommendation === "High Risk") {
-    if (result.dimensions.marketSaturation >= SATURATION_HIGH_THRESHOLD) {
+    if (subject.dimensions.marketSaturation >= SATURATION_HIGH_THRESHOLD) {
       return `Market is saturated with near-identical listings — only worth entering with a sharply differentiated angle for ${targetCustomer.toLowerCase()}, or consider a different product.`;
     }
     return "Scores too low to recommend as a primary opportunity right now — consider a different product or a niche with clearer demand.";
@@ -281,9 +319,9 @@ function buildStrategy(
   return `Create a differentiated private-label product targeting ${targetCustomer.toLowerCase()} with ${featureHook}.`;
 }
 
-function buildStrengths(result: AnalysisResult, branded: boolean): string[] {
+function buildStrengths(subject: InsightSubject, branded: boolean): string[] {
   const strengths: string[] = [];
-  const { dimensions } = result;
+  const { dimensions } = subject;
   if (dimensions.demand >= 65) strengths.push("Strong, validated demand for this product.");
   if (!branded && dimensions.brandOpportunity >= 60) strengths.push("No dominant brand — real private-label opportunity.");
   if (dimensions.margin >= 60) strengths.push("Healthy margin potential at typical selling prices.");
@@ -293,9 +331,9 @@ function buildStrengths(result: AnalysisResult, branded: boolean): string[] {
   return strengths.slice(0, 4);
 }
 
-function buildRisks(result: AnalysisResult, branded: boolean, brandName: string | null): string[] {
+function buildRisks(subject: InsightSubject, branded: boolean, brandName: string | null): string[] {
   const risks: string[] = [];
-  const { dimensions } = result;
+  const { dimensions } = subject;
   if (branded) risks.push(`Dominated by ${brandName} — hard to out-rank organically.`);
   if (dimensions.competition >= 70) risks.push("High competition from established sellers.");
   if (dimensions.marketSaturation >= 70) risks.push("Market is saturated with near-identical listings.");
@@ -304,17 +342,47 @@ function buildRisks(result: AnalysisResult, branded: boolean, brandName: string 
   return risks.slice(0, 4);
 }
 
-export function generateOpportunityInsights(result: AnalysisResult): OpportunityInsights {
-  const branded = detectBrand(result.productName);
-  const brandName = branded ? findBrand(result.productName) : null;
-  const profile = categoryProfile(result.category);
-  const targetCustomer = inferTargetCustomer(result.productName, result.category);
+// The consultant layer: when the verdict is High Risk, don't just say no —
+// point at what to sell instead. Reuses each category's own bundle idea
+// (already accessory-flavored) rather than inventing a second content bank.
+function buildAlternatives(
+  recommendation: Recommendation,
+  branded: boolean,
+  brandName: string | null,
+  category: string,
+  profile: CategoryInsightProfile
+): string[] {
+  if (recommendation !== "High Risk") return [];
 
-  const recommendation = computeRecommendation(result);
-  const summary = buildSummary(result, recommendation, branded, brandName);
-  const suggestedStrategy = buildStrategy(result, recommendation, branded, brandName, targetCustomer, profile.featureHook);
-  const strengths = buildStrengths(result, branded);
-  const risks = buildRisks(result, branded, brandName);
+  const alternatives: string[] = [];
+  if (branded && brandName) {
+    alternatives.push(
+      `Sell accessories or complements for ${brandName} products instead of competing head-on — cases, chargers, mounts, and protective gear see steady demand without a brand standoff.`
+    );
+    alternatives.push(
+      `Consider a private-label product in a related niche within ${category} where ${brandName} and other major brands aren't already dominant.`
+    );
+  } else {
+    alternatives.push(
+      `Look for a narrower niche within ${category} where competition is lighter — broad, saturated searches like this rarely work for a new seller.`
+    );
+  }
+  alternatives.push(profile.ideas[2]);
+  return alternatives.slice(0, 3);
+}
+
+export function generateOpportunityInsights(subject: InsightSubject): OpportunityInsights {
+  const branded = detectBrand(subject.productName);
+  const brandName = branded ? findBrand(subject.productName) : null;
+  const profile = categoryProfile(subject.category);
+  const targetCustomer = inferTargetCustomer(subject.productName, subject.category);
+
+  const recommendation = computeRecommendation(subject);
+  const summary = buildSummary(subject, recommendation, branded, brandName);
+  const suggestedStrategy = buildStrategy(subject, recommendation, branded, brandName, targetCustomer, profile.featureHook);
+  const strengths = buildStrengths(subject, branded);
+  const risks = buildRisks(subject, branded, brandName);
+  const alternatives = buildAlternatives(recommendation, branded, brandName, subject.category, profile);
   const differentiationIdeas = [...profile.ideas];
 
   return {
@@ -325,5 +393,6 @@ export function generateOpportunityInsights(result: AnalysisResult): Opportunity
     suggestedStrategy,
     targetCustomer,
     differentiationIdeas,
+    alternatives,
   };
 }

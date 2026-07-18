@@ -11,8 +11,9 @@
 // than random.
 import type { MarketplaceId, MarketplaceListing } from "@/lib/marketplace/types";
 import { FALLBACK_PROFILE, findCategoryProfile } from "./categoryProfiles";
-import { computeOpportunityScore, deriveDimensions, pickRecommendation } from "./heuristicProvider";
+import { computeOpportunityScore, deriveDimensions } from "./heuristicProvider";
 import { detectBrand, findBrand } from "./brands";
+import { computeRecommendation } from "./opportunityInsights";
 import {
   applyBrandAdjustment,
   clamp,
@@ -23,7 +24,7 @@ import {
   reviewDemandSignal,
 } from "./scoringUtils";
 import { generateSellingAngle } from "./sellingAngle";
-import type { DimensionScores, ProductOpportunity } from "./types";
+import type { DataSource, DimensionKey, DimensionScores, ProductOpportunity } from "./types";
 
 export interface MarketContext {
   marketplace: MarketplaceId;
@@ -33,6 +34,15 @@ export interface MarketContext {
   priceMin: number;
   priceMax: number;
   averagePrice?: number;
+  // Average rating across the competing listings in this market — a highly
+  // rated competing set is harder to unseat than the same seller count with
+  // mediocre ratings, so this nudges competition beyond a pure headcount.
+  averageRating?: number;
+  // Fraction (0-1) of this market's listings dominated by each brand,
+  // keyed by lowercase brand name — lets brand-penalty severity scale with
+  // how much of the actual market that brand controls instead of a flat
+  // penalty regardless of concentration.
+  brandConcentration?: Record<string, number>;
   currency: string;
 }
 
@@ -89,7 +99,14 @@ export function scoreMarketplaceProduct(
       ? clamp(Math.round(marketDemand * 0.4 + perListingDemand * 0.5 + rankBonus), 0, 100)
       : clamp(marketDemand + rankBonus, 0, 100);
 
-  const competition = logScale(market.totalSellers, 15, 24);
+  // Pure headcount, nudged by competing-set quality: a competing set that's
+  // rated very highly is harder for a new seller to unseat than the same
+  // seller count with mediocre ratings; a poorly rated set is more beatable
+  // even at higher volume.
+  const competitionHeadcount = logScale(market.totalSellers, 15, 24);
+  const competitionQualityAdjustment =
+    market.averageRating !== undefined ? clamp(Math.round((market.averageRating - 4) * 8), -12, 12) : 0;
+  const competition = clamp(competitionHeadcount + competitionQualityAdjustment, 0, 100);
 
   const marketSaturation = computeMarketSaturation(
     market.totalListings,
@@ -121,6 +138,8 @@ export function scoreMarketplaceProduct(
   );
 
   const branded = detectBrand(listing.title);
+  const brandName = branded ? findBrand(listing.title) : null;
+  const brandConcentration = brandName ? market.brandConcentration?.[brandName.toLowerCase()] : undefined;
   const dimensions: DimensionScores = applyBrandAdjustment(
     {
       ...baseline,
@@ -131,11 +150,26 @@ export function scoreMarketplaceProduct(
       returnRisk,
       marketSaturation,
     },
-    branded
+    branded,
+    brandConcentration
   );
 
   const opportunityScore = computeOpportunityScore(profile, dimensions);
   const sellingAngle = generateSellingAngle(listing.title, profile.category, branded, dimensions.margin, seed);
+
+  const dimensionSources: Partial<Record<DimensionKey, DataSource>> = {
+    demand: perListingDemand !== null ? "real" : "ai-estimate",
+    competition: "real",
+    marketSaturation: "real",
+    margin: "real",
+    shippingComplexity: "real",
+    returnRisk: "real",
+    brandOpportunity: "heuristic",
+    bundlePotential: "ai-estimate",
+    supplierAvailability: "ai-estimate",
+    repeatPurchase: "ai-estimate",
+    trendStability: "ai-estimate",
+  };
 
   return {
     title: listing.title,
@@ -151,8 +185,9 @@ export function scoreMarketplaceProduct(
     location: listing.location,
     freeShipping: listing.freeShipping,
     opportunityScore,
-    recommendation: pickRecommendation(opportunityScore),
+    recommendation: computeRecommendation({ opportunityScore, dimensions }),
     dimensions,
+    dimensionSources,
     shortExplanation: explainProduct(listing, market, dimensions, branded, sellingAngle),
     sellingAngle,
     dataConfidence: "hybrid",

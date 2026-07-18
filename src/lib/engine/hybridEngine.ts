@@ -4,19 +4,49 @@
 // through `searchAllMarketplaces`, never a specific provider, so the engine
 // stays decoupled from where the data actually comes from.
 import { searchAllMarketplaces } from "@/lib/marketplace/registry";
-import type { MarketplaceSummary } from "@/lib/marketplace/types";
+import type { MarketplaceListing, MarketplaceSummary } from "@/lib/marketplace/types";
+import { findBrand } from "./brands";
 import { getCategoryProfileByName } from "./categoryProfiles";
-import { analyzeProduct as heuristicAnalyze, pickRecommendation } from "./heuristicProvider";
+import { analyzeProduct as heuristicAnalyze } from "./heuristicProvider";
+import { computeRecommendation } from "./opportunityInsights";
 import { scoreMarketplaceProduct } from "./productScoring";
 import type { MarketContext } from "./productScoring";
 import { clamp, computeMarketSaturation } from "./scoringUtils";
 import type {
   AnalysisResult,
   DataConfidence,
+  DimensionKey,
+  DataSource,
   DiscoveryResult,
   EngineOptions,
   MarketIntelligenceProvider,
 } from "./types";
+
+// A market with no seller count reported by the provider falls back to
+// listing count, but one seller commonly lists several items — dampening
+// the estimate keeps competition from reading higher than it likely is.
+function estimateSellerCount(listingCount: number, sellerCount?: number): number {
+  return sellerCount ?? Math.max(1, Math.round(listingCount * 0.6));
+}
+
+// Fraction (0-1) of a market's listings dominated by each detected brand,
+// keyed by lowercase brand name — used to scale brand-penalty severity by
+// how much of the actual market that brand controls.
+function computeBrandConcentration(listings: MarketplaceListing[]): Record<string, number> {
+  if (listings.length === 0) return {};
+  const counts = new Map<string, number>();
+  for (const listing of listings) {
+    const brand = findBrand(listing.title);
+    if (!brand) continue;
+    const key = brand.toLowerCase();
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const shares: Record<string, number> = {};
+  counts.forEach((count, key) => {
+    shares[key] = count / listings.length;
+  });
+  return shares;
+}
 
 // Prefer the first available marketplace in registry priority order (see
 // marketplaceProviders in registry.ts) as the primary real price band.
@@ -41,7 +71,7 @@ function computeAdjustment(base: AnalysisResult, summaries: MarketplaceSummary[]
   if (available.length === 0) return null;
 
   const totalListings = available.reduce((sum, s) => sum + s.listingCount, 0);
-  const totalSellers = available.reduce((sum, s) => sum + (s.sellerCount ?? s.listingCount), 0);
+  const totalSellers = available.reduce((sum, s) => sum + estimateSellerCount(s.listingCount, s.sellerCount), 0);
 
   // Log-scaled so a handful of listings doesn't read as "huge demand" but
   // hundreds do — deliberately currency-independent (counts only).
@@ -140,14 +170,26 @@ function withMarketplaceData(base: AnalysisResult, summaries: MarketplaceSummary
   const opportunityScore = Math.round(base.opportunityScore * 0.6 + adjustment.marketplaceScore * 0.4);
   const primary = adjustment.primary;
 
+  // Real marketplace numbers now back these dimensions, upgraded from the
+  // heuristic-only baseline's "ai-estimate" sourcing; margin only upgrades
+  // when a real price band actually contributed to it (see marginFromData).
+  const dimensionSources: Partial<Record<DimensionKey, DataSource>> = {
+    ...base.dimensionSources,
+    demand: "real",
+    competition: "real",
+    marketSaturation: "real",
+    ...(adjustment.marginFromData !== undefined ? { margin: "real" as const } : {}),
+  };
+
   return {
     ...base,
     dimensions,
+    dimensionSources,
     demand: dimensions.demand,
     competition: dimensions.competition,
     marginPotential: dimensions.margin,
     opportunityScore,
-    recommendation: pickRecommendation(opportunityScore),
+    recommendation: computeRecommendation({ opportunityScore, dimensions }),
     priceMin: primary?.minPrice ?? base.priceMin,
     priceMax: primary?.maxPrice ?? base.priceMax,
     priceCurrency: primary?.currency ?? base.priceCurrency,
@@ -189,17 +231,29 @@ export async function discoverOpportunities(
   }
 
   const scored = available.flatMap((summary) => {
+    const sellerCountMeasured = summary.sellerCount !== undefined;
     const market: MarketContext = {
       marketplace: summary.marketplace,
       marketplaceName: summary.marketplaceName,
       totalListings: summary.listingCount,
-      totalSellers: summary.sellerCount ?? summary.listingCount,
+      totalSellers: estimateSellerCount(summary.listingCount, summary.sellerCount),
       priceMin: summary.minPrice ?? summary.averagePrice ?? 0,
       priceMax: summary.maxPrice ?? summary.averagePrice ?? 0,
       averagePrice: summary.averagePrice,
+      averageRating: summary.averageRating,
+      brandConcentration: computeBrandConcentration(summary.listings),
       currency: summary.currency ?? "",
     };
-    return summary.listings.map((listing, rank) => scoreMarketplaceProduct(listing, market, rank));
+    return summary.listings.map((listing, rank) => {
+      const product = scoreMarketplaceProduct(listing, market, rank);
+      // Competition was built on an estimated (not provider-reported)
+      // seller count for this marketplace — reflect that in the UI instead
+      // of claiming it as measured.
+      if (!sellerCountMeasured) {
+        product.dimensionSources = { ...product.dimensionSources, competition: "ai-estimate" };
+      }
+      return product;
+    });
   });
 
   scored.sort((a, b) => b.opportunityScore - a.opportunityScore);

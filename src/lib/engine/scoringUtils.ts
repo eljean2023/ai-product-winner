@@ -3,7 +3,25 @@
 // Every function here only ever consumes fields that already exist on
 // MarketplaceListing/MarketplaceSummary — nothing here invents data, it only
 // reshapes real numbers into 0-100 dimension scores.
-import type { DimensionScores } from "./types";
+import type { DataSource, DimensionKey, DimensionScores } from "./types";
+
+// The heuristic-only path (no marketplace match at all) has no real data
+// for any dimension — every score is a category-baseline estimate — except
+// brand opportunity, which is always a deterministic keyword rule regardless
+// of whether real listings are available.
+export const HEURISTIC_ONLY_SOURCES: Record<DimensionKey, DataSource> = {
+  demand: "ai-estimate",
+  competition: "ai-estimate",
+  margin: "ai-estimate",
+  shippingComplexity: "ai-estimate",
+  supplierAvailability: "ai-estimate",
+  bundlePotential: "ai-estimate",
+  brandOpportunity: "heuristic",
+  repeatPurchase: "ai-estimate",
+  trendStability: "ai-estimate",
+  returnRisk: "ai-estimate",
+  marketSaturation: "ai-estimate",
+};
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -24,7 +42,12 @@ export function logScale(count: number, base: number, spread: number): number {
 export function reviewDemandSignal(reviewCount: number | undefined, rating: number | undefined): number | null {
   if (reviewCount === undefined) return null;
   const volume = logScale(reviewCount, 20, 18);
-  const ratingBonus = rating !== undefined ? clamp(Math.round((rating - 3) * 15), -30, 30) : 0;
+  // A rating backed by only a handful of reviews is far less trustworthy
+  // than the same rating backed by hundreds — dampen the rating's swing by
+  // review-count confidence instead of trusting a 5.0-from-2-reviews as much
+  // as a 4.6-from-5,000.
+  const confidenceFactor = clamp(reviewCount / 100, 0.3, 1);
+  const ratingBonus = rating !== undefined ? clamp(Math.round((rating - 3) * 15 * confidenceFactor), -30, 30) : 0;
   return clamp(volume + ratingBonus, 0, 100);
 }
 
@@ -70,12 +93,24 @@ export function priceBandBonus(price: number, currency: string): number {
 // signals a more entrenched, higher-competition market; the absence of one
 // is itself a private-label opportunity signal. Mirrors the spec examples:
 // "Apple AirPods" ~10/100 brand opportunity, generic earbuds ~80/100.
-export function applyBrandAdjustment(dims: DimensionScores, branded: boolean): DimensionScores {
+// `concentration` is the fraction (0-1) of the competing market's listings
+// that belong to the same detected brand — a market that's 90% one brand
+// deserves a harsher penalty than one where the brand shows up once. Callers
+// with no listing set to measure against (the query-only heuristic path)
+// omit it and get the original flat adjustment via the 0.5 default.
+export function applyBrandAdjustment(
+  dims: DimensionScores,
+  branded: boolean,
+  concentration = 0.5
+): DimensionScores {
   if (branded) {
+    const intensity = clamp(concentration, 0, 1);
+    const brandCeiling = clamp(Math.round(20 - (intensity - 0.5) * 10), 15, 25);
+    const competitionBonus = clamp(Math.round(20 + (intensity - 0.5) * 12), 14, 26);
     return {
       ...dims,
-      brandOpportunity: clamp(Math.round(dims.brandOpportunity * 0.15), 3, 20),
-      competition: clamp(dims.competition + 20, 0, 100),
+      brandOpportunity: clamp(Math.round(dims.brandOpportunity * 0.15), 3, brandCeiling),
+      competition: clamp(dims.competition + competitionBonus, 0, 100),
     };
   }
   return {

@@ -3,15 +3,10 @@ import { FALLBACK_PROFILE, findCategoryProfile, type CategoryProfile } from "./c
 import { computeConfidence } from "./confidence";
 import { generateReasoning } from "./reasoning";
 import { detectBrand, findBrand } from "./brands";
-import { applyBrandAdjustment } from "./scoringUtils";
+import { computeRecommendation } from "./opportunityInsights";
+import { applyBrandAdjustment, HEURISTIC_ONLY_SOURCES } from "./scoringUtils";
 import { generateSellingAngle } from "./sellingAngle";
-import {
-  RISK_DIMENSIONS,
-  type AnalysisResult,
-  type DimensionKey,
-  type DimensionScores,
-  type Recommendation,
-} from "./types";
+import { RISK_DIMENSIONS, type AnalysisResult, type DimensionKey, type DimensionScores } from "./types";
 
 function titleCase(input: string): string {
   return input
@@ -26,12 +21,6 @@ function titleCase(input: string): string {
       return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
     })
     .join(" ");
-}
-
-export function pickRecommendation(score: number): Recommendation {
-  if (score >= 75) return "Strong Opportunity";
-  if (score >= 50) return "Possible Opportunity";
-  return "High Risk";
 }
 
 export function deriveDimensions(profile: CategoryProfile, seed: string): DimensionScores {
@@ -86,10 +75,11 @@ function buildAnalysis(query: string, profile: CategoryProfile, matchedCategory:
     productName: titleCase(query) || "Unnamed Product",
     category: profile.category,
     opportunityScore,
-    recommendation: pickRecommendation(opportunityScore),
+    recommendation: computeRecommendation({ opportunityScore, dimensions }),
     confidence,
     confidenceReason,
     dimensions,
+    dimensionSources: HEURISTIC_ONLY_SOURCES,
     priceMin,
     priceMax,
     priceCurrency: "USD",

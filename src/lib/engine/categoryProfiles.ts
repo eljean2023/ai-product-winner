@@ -494,14 +494,24 @@ export const CATEGORY_PROFILES: CategoryProfile[] = RAW_CATEGORY_PROFILES.map(fi
 
 export const FALLBACK_PROFILE: CategoryProfile = finalizeProfile(RAW_FALLBACK_PROFILE);
 
+// Best-match rather than first-match: summing matched-keyword lengths means
+// a title that hits several keywords, or one long/specific keyword, in one
+// category outweighs a single short, generic keyword hit in another —
+// instead of picking whichever category happens to be listed first.
 export function findCategoryProfile(query: string): CategoryProfile | null {
   const lower = query.toLowerCase();
+  let best: { profile: CategoryProfile; score: number } | null = null;
+
   for (const profile of CATEGORY_PROFILES) {
-    if (profile.keywords.some((keyword) => lower.includes(keyword))) {
-      return profile;
+    const matches = profile.keywords.filter((keyword) => lower.includes(keyword));
+    if (matches.length === 0) continue;
+    const score = matches.reduce((sum, keyword) => sum + keyword.length, 0);
+    if (!best || score > best.score) {
+      best = { profile, score };
     }
   }
-  return null;
+
+  return best?.profile ?? null;
 }
 
 // Looks a profile up by its exact category name (e.g. the `category` field
