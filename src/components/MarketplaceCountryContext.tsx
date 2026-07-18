@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useSyncExternalStore, type ReactNode } from "react";
-import { DEFAULT_ML_COUNTRY, MERCADO_LIBRE_COUNTRIES } from "@/lib/marketplace";
+import { DEFAULT_ML_COUNTRY, MERCADO_LIBRE_COUNTRIES } from "@/lib/marketplace/countries";
 
 const STORAGE_KEY = "aiph:ml-country";
 

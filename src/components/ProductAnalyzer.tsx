@@ -1,12 +1,8 @@
 "use client";
 
 import { useImperativeHandle, useState, type FormEvent, type Ref } from "react";
-import {
-  DIMENSION_LABELS,
-  RISK_DIMENSIONS,
-  type AnalysisResult,
-  type DimensionKey,
-} from "@/lib/engine";
+import type { AnalysisResult, DimensionKey } from "@/lib/engine";
+import { DIMENSION_LABELS, RISK_DIMENSIONS } from "@/lib/engine/types";
 import { MarketplaceButtons, MarketplaceChip } from "./MarketplaceDisplay";
 import { useMarketplaceCountry } from "./MarketplaceCountryContext";
 import { CONFIDENCE_STYLES, RECOMMENDATION_STYLES } from "./recommendationStyles";

@@ -6,7 +6,8 @@ import type {
   MarketplaceSummary,
 } from "../types";
 import { unavailableSummary } from "../types";
-import { getMercadoLibreCredentials, isMercadoLibreConfigured } from "./mercadoLibreConfig";
+import { isMercadoLibreConfigured } from "./mercadoLibreConfig";
+import { getValidAccessToken } from "./mercadoLibreOAuth";
 
 const NAME = "Mercado Libre";
 const FETCH_TIMEOUT_MS = 8000;
@@ -14,87 +15,14 @@ const DEBUG_PREFIX = "[ML]";
 
 // As of Mercado Libre's 2023 API changes, /sites/{site}/search requires an
 // OAuth access token even for public search results (unauthenticated calls
-// now get a flat 403). A free developer account (no sales requirement,
-// unlike Amazon's Associates program) at developers.mercadolibre.com
-// provides a client id/secret for the client_credentials grant. Until
-// those are configured, this provider reports "Not Connected" — it never
-// falls back to scraping. Once configured, any *other* failure (bad
-// credentials, rate limit, network error, ...) must surface as its own
-// distinct reason — never get relabeled as "not connected".
-
-interface TokenCache {
-  token: string;
-  expiresAt: number;
-}
-
-let tokenCache: TokenCache | null = null;
-
-// Distinguishes "no token because nothing is configured" from "no token
-// because the token request itself failed" — the two must never share a
-// message, since the second case means credentials ARE present.
-type TokenResult = { token: string } | { error: string };
-
-async function getAccessToken(): Promise<TokenResult> {
-  const credentials = getMercadoLibreCredentials();
-  if (!credentials) return { error: "not-configured" };
-
-  if (tokenCache && tokenCache.expiresAt > Date.now()) {
-    console.log(`${DEBUG_PREFIX} token cache hit`);
-    return { token: tokenCache.token };
-  }
-
-  console.log(`${DEBUG_PREFIX} credentials detected, requesting access token`);
-  try {
-    const res = await fetch("https://api.mercadolibre.com/oauth/token", {
-      method: "POST",
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        Accept: "application/json",
-      },
-      body: new URLSearchParams({
-        grant_type: "client_credentials",
-        client_id: credentials.clientId,
-        client_secret: credentials.clientSecret,
-      }).toString(),
-    });
-
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      console.error(`${DEBUG_PREFIX} token request failed: ${res.status} ${detail}`);
-      if (res.status === 400 || res.status === 401) {
-        return {
-          error: `Mercado Libre rejected the ML_CLIENT_ID/ML_CLIENT_SECRET (HTTP ${res.status}). ${detail || "Check that the credentials match a valid Mercado Libre app."}`.trim(),
-        };
-      }
-      if (res.status === 429) {
-        return { error: "Mercado Libre token endpoint rate-limited this request (HTTP 429). Try again shortly." };
-      }
-      return { error: `Mercado Libre token request failed (HTTP ${res.status}). ${detail}`.trim() };
-    }
-
-    const data = (await res.json()) as { access_token?: string; expires_in?: number };
-    if (!data.access_token) {
-      console.error(`${DEBUG_PREFIX} token response had no access_token`, data);
-      return { error: "Mercado Libre token response did not include an access_token." };
-    }
-
-    console.log(`${DEBUG_PREFIX} token received, expires_in=${data.expires_in ?? 3600}s`);
-    tokenCache = {
-      token: data.access_token,
-      expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000 - 60_000,
-    };
-    return { token: tokenCache.token };
-  } catch (err) {
-    console.error(`${DEBUG_PREFIX} token request threw`, err);
-    return {
-      error:
-        err instanceof Error
-          ? `Mercado Libre token request failed: ${err.message}`
-          : "Mercado Libre token request failed unexpectedly.",
-    };
-  }
-}
+// now get a flat 403). Mercado Libre does NOT support the client_credentials
+// grant for this API — the token must come from a user completing the
+// Authorization Code flow (see ./mercadoLibreOAuth and the
+// /api/marketplace/mercadolibre/connect route). Until an account is
+// connected, this provider reports "Not Connected" — it never falls back
+// to scraping. Once connected, any *other* failure (expired session, rate
+// limit, network error, ...) must surface as its own distinct reason —
+// never get relabeled as "not connected".
 
 interface MlSearchItem {
   title?: string;
@@ -200,19 +128,28 @@ async function search(query: string, opts: MarketplaceSearchOptions = {}): Promi
   if (!trimmed) return unavailableSummary("mercadolibre", NAME, query, "No search query provided.");
 
   if (!isMercadoLibreConfigured()) {
-    console.log(`${DEBUG_PREFIX} not configured — ML_CLIENT_ID/ML_CLIENT_SECRET missing`);
+    console.log(`${DEBUG_PREFIX} not configured — ML_CLIENT_ID/ML_CLIENT_SECRET/ML_REDIRECT_URI missing`);
     return unavailableSummary(
       "mercadolibre",
       NAME,
       trimmed,
-      "Mercado Libre is not connected. Add ML_CLIENT_ID and ML_CLIENT_SECRET (free at developers.mercadolibre.com) to enable live Mercado Libre data."
+      "Mercado Libre is not configured. Set ML_CLIENT_ID, ML_CLIENT_SECRET, and ML_REDIRECT_URI to enable Mercado Libre login."
     );
   }
 
-  const tokenResult = await getAccessToken();
+  const tokenResult = await getValidAccessToken();
   if ("error" in tokenResult) {
-    // Credentials ARE present (checked above) — this is a real failure
-    // (bad secret, rate limit, network error, ...), never "not connected".
+    if (tokenResult.error === "not-connected") {
+      return unavailableSummary(
+        "mercadolibre",
+        NAME,
+        trimmed,
+        "Mercado Libre is not connected. Visit /api/marketplace/mercadolibre/connect to authorize your account."
+      );
+    }
+    // Credentials ARE present and a connection was made at some point —
+    // this is a real failure (expired session, rate limit, network error,
+    // ...), never "not connected".
     return unavailableSummary("mercadolibre", NAME, trimmed, tokenResult.error);
   }
   const token = tokenResult.token;

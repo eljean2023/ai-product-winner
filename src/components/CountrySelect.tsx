@@ -1,6 +1,6 @@
 "use client";
 
-import { MERCADO_LIBRE_COUNTRIES } from "@/lib/marketplace";
+import { MERCADO_LIBRE_COUNTRIES } from "@/lib/marketplace/countries";
 import { useMarketplaceCountry } from "./MarketplaceCountryContext";
 
 export default function CountrySelect() {

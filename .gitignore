@@ -37,6 +37,10 @@ yarn-error.log*
 # vercel
 .vercel
 
+# local persisted OAuth tokens (Mercado Libre) — never commit, contains a
+# live refresh token
+/.data
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
