@@ -1,7 +1,7 @@
 // Shared math for blending real marketplace signals (listing counts, seller
 // counts, prices, ratings, review counts) into the category-baseline scores.
 // Every function here only ever consumes fields that already exist on
-// MarketplaceListing/MarketplaceSummary — nothing here invents data, it only
+// ProductListing/MarketplaceSummary — nothing here invents data, it only
 // reshapes real numbers into 0-100 dimension scores.
 import type { DataSource, DimensionKey, DimensionScores } from "./types";
 

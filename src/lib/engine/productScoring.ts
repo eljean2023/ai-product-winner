@@ -9,7 +9,7 @@
 // category-baseline heuristic used elsewhere in the engine, seeded off the
 // listing's own permalink so they're deterministic per real product rather
 // than random.
-import type { MarketplaceId, MarketplaceListing } from "@/lib/marketplace/types";
+import type { MarketplaceId, ProductListing } from "@/lib/marketplace/types";
 import { FALLBACK_PROFILE, findCategoryProfile } from "./categoryProfiles";
 import { computeOpportunityScore, deriveDimensions } from "./heuristicProvider";
 import { detectBrand, findBrand } from "./brands";
@@ -52,7 +52,7 @@ function pricePercentile(price: number, min: number, max: number): number {
 }
 
 function explainProduct(
-  listing: MarketplaceListing,
+  listing: ProductListing,
   market: MarketContext,
   dims: DimensionScores,
   branded: boolean,
@@ -69,14 +69,14 @@ function explainProduct(
     const brandName = findBrand(listing.title);
     parts.push(`Dominated by ${brandName} — limited brand-building room here.`);
   }
-  if (listing.freeShipping) parts.push("Free shipping is already offered, keeping fulfillment simple.");
+  if (listing.shippingInfo?.freeShipping) parts.push("Free shipping is already offered, keeping fulfillment simple.");
   if (listing.condition) parts.push(`Listed as ${listing.condition}.`);
   parts.push(sellingAngle);
   return parts.join(" ");
 }
 
 export function scoreMarketplaceProduct(
-  listing: MarketplaceListing,
+  listing: ProductListing,
   market: MarketContext,
   rank = 0
 ): ProductOpportunity {
@@ -125,12 +125,12 @@ export function scoreMarketplaceProduct(
   );
 
   const shippingComplexity = clamp(
-    listing.freeShipping ? Math.round(baseline.shippingComplexity * 0.6) : baseline.shippingComplexity,
+    listing.shippingInfo?.freeShipping ? Math.round(baseline.shippingComplexity * 0.6) : baseline.shippingComplexity,
     0,
     100
   );
 
-  const trustPenalty = (listing.imageUrl ? 0 : 6) + (listing.seller ? 0 : 6);
+  const trustPenalty = (listing.image ? 0 : 6) + (listing.seller ? 0 : 6);
   const returnRisk = clamp(
     baseline.returnRisk + (listing.condition === "used" ? 10 : 0) + trustPenalty + ratingReturnPenalty(listing.rating),
     0,
@@ -178,12 +178,12 @@ export function scoreMarketplaceProduct(
     marketplaceName: market.marketplaceName,
     price: listing.price,
     currency,
-    imageUrl: listing.imageUrl,
+    imageUrl: listing.image,
     permalink: listing.url,
     seller: listing.seller,
     condition: listing.condition,
-    location: listing.location,
-    freeShipping: listing.freeShipping,
+    location: listing.shippingInfo?.location,
+    freeShipping: listing.shippingInfo?.freeShipping,
     opportunityScore,
     recommendation: computeRecommendation({ opportunityScore, dimensions }),
     dimensions,

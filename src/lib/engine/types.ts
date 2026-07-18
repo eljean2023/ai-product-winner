@@ -135,7 +135,10 @@ export interface EngineOptions {
 
 // Abstraction over "where market signal comes from". Backed today by the
 // hybrid engine (heuristics blended with live marketplace data); components
-// only ever depend on this interface, never a specific provider.
+// only ever depend on this interface, never a specific provider. Note the
+// double indirection: this engine-level interface never depends on a
+// specific *marketplace* provider either — see MarketplaceProvider in
+// @/lib/marketplace/types for that boundary.
 export interface MarketIntelligenceProvider {
   name: string;
   analyzeProduct(query: string, opts?: EngineOptions): Promise<AnalysisResult>;

@@ -3,9 +3,10 @@
 // to `./registry` directly; this barrel is for display-only needs.
 export type {
   MarketplaceId,
-  MarketplaceListing,
+  ProductListing,
   MarketplaceSearchOptions,
   MarketplaceSummary,
+  ProviderStatus,
 } from "./types";
 export { DEFAULT_ML_COUNTRY, MERCADO_LIBRE_COUNTRIES, getMercadoLibreCountry } from "./countries";
 export type { MercadoLibreCountry } from "./countries";

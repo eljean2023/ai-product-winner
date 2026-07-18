@@ -1,5 +1,6 @@
-import type { MarketplaceListing, MarketplaceProvider, MarketplaceSummary } from "../../types";
+import type { MarketplaceProvider, MarketplaceSummary, ProductListing, ProviderStatus } from "../../types";
 import { unavailableSummary } from "../../types";
+import { buildMarketplaceSummary } from "../../aggregate";
 import { isSerpApiConfigured } from "./config";
 import { fetchSerpApi } from "./client";
 
@@ -24,21 +25,30 @@ interface SerpApiAmazonResponse {
   organic_results?: SerpApiAmazonItem[];
 }
 
-function toListing(item: SerpApiAmazonItem): MarketplaceListing | null {
+function toListing(item: SerpApiAmazonItem): ProductListing | null {
   if (!item.title || !item.link || typeof item.extracted_price !== "number") return null;
   return {
+    id: `amazon:${item.link}`,
     title: item.title,
+    marketplace: "amazon",
     price: item.extracted_price,
     currency: CURRENCY,
     url: item.link,
-    imageUrl: item.thumbnail,
+    image: item.thumbnail,
     rating: item.rating,
     reviewCount: item.reviews,
-    freeShipping: item.is_prime,
+    shippingInfo: { freeShipping: item.is_prime },
+    rawData: item,
   };
 }
 
-async function search(query: string): Promise<MarketplaceSummary> {
+async function getProviderStatus(): Promise<ProviderStatus> {
+  return isSerpApiConfigured()
+    ? { connected: true }
+    : { connected: false, reason: "Amazon (via SerpAPI) is not connected. Add SERPAPI_API_KEY to enable live Amazon data." };
+}
+
+async function searchProducts(query: string): Promise<MarketplaceSummary> {
   const trimmed = query.trim();
   if (!trimmed) return unavailableSummary("amazon", NAME, query, "No search query provided.");
 
@@ -62,32 +72,13 @@ async function search(query: string): Promise<MarketplaceSummary> {
 
   const listings = (result.data.organic_results ?? [])
     .map(toListing)
-    .filter((l): l is MarketplaceListing => l !== null);
+    .filter((l): l is ProductListing => l !== null);
 
   if (listings.length === 0) {
     return unavailableSummary("amazon", NAME, trimmed, "No live listings found on Amazon for this query.");
   }
 
-  const prices = listings.map((l) => l.price);
-  const averagePrice = prices.reduce((sum, p) => sum + p, 0) / prices.length;
-  const ratings = listings.map((l) => l.rating).filter((r): r is number => typeof r === "number");
-  const reviewCounts = listings.map((l) => l.reviewCount).filter((r): r is number => typeof r === "number");
-
-  return {
-    marketplace: "amazon",
-    marketplaceName: NAME,
-    available: true,
-    query: trimmed,
-    listingCount: listings.length,
-    averagePrice: Math.round(averagePrice * 100) / 100,
-    minPrice: Math.min(...prices),
-    maxPrice: Math.max(...prices),
-    currency: CURRENCY,
-    averageRating: ratings.length ? Math.round((ratings.reduce((s, r) => s + r, 0) / ratings.length) * 10) / 10 : undefined,
-    totalReviews: reviewCounts.length ? reviewCounts.reduce((s, r) => s + r, 0) : undefined,
-    topListing: listings[0],
-    listings: listings.slice(0, 10),
-  };
+  return buildMarketplaceSummary("amazon", NAME, trimmed, listings, { currency: CURRENCY, limit: 10 });
 }
 
 export const serpApiAmazonProvider: MarketplaceProvider = {
@@ -95,5 +86,6 @@ export const serpApiAmazonProvider: MarketplaceProvider = {
   marketplace: "amazon",
   name: NAME,
   isConfigured: isSerpApiConfigured,
-  search,
+  getProviderStatus,
+  searchProducts,
 };

@@ -1,30 +1,57 @@
-// Marketplace layer. This module knows how to talk to real marketplaces —
-// the AI engine never imports these providers directly, only the generic
-// `searchAllMarketplaces` from ./registry. Adding a new marketplace means
-// implementing MarketplaceProvider and registering it; nothing else changes.
+// Marketplace layer — the Unified Product Data Layer. This module knows how
+// to talk to real marketplaces; the AI intelligence engine (src/lib/engine)
+// never imports a specific provider, only the generic ProductListing type
+// and `searchAllMarketplaces`/`searchAllMarketplaces` from ./registry.
+// Adding a new marketplace means implementing MarketplaceProvider and
+// registering it in registry.ts; nothing else in the app changes — SerpAPI,
+// Amazon PA-API, Mercado Libre, eBay, Keepa, Walmart are all just
+// interchangeable implementations of the same interface, never a hardcoded
+// dependency of the scoring engine.
 
-export interface MarketplaceListing {
+// The single normalized shape every provider maps its raw data into. `seller`
+// and `condition` are kept beyond the marketplace's own product-identity
+// fields because they're real scoring inputs downstream (trust/return-risk,
+// margin), not because every provider populates them.
+export interface ProductListing {
+  id: string;
   title: string;
+  marketplace: MarketplaceId;
+  url: string;
+  image?: string;
   price: number;
   currency: string;
-  url: string;
-  imageUrl?: string;
+  category?: string;
+  brand?: string;
   rating?: number;
   reviewCount?: number;
   seller?: string;
   condition?: string;
-  category?: string;
-  freeShipping?: boolean;
-  location?: string;
+  sellerCount?: number;
+  availability?: "in_stock" | "out_of_stock" | "unknown";
+  shippingInfo?: {
+    freeShipping?: boolean;
+    location?: string;
+  };
+  // The provider's own pre-normalization payload for this listing, kept for
+  // future debugging/enrichment (e.g. cross-referencing with Keepa by ASIN).
+  // Never read by the scoring engine.
+  rawData?: unknown;
 }
 
-export type MarketplaceId = "amazon" | "ebay" | "mercadolibre";
+export type MarketplaceId = "amazon" | "ebay" | "mercadolibre" | "walmart";
 
 // Identifies the data source/vendor behind a provider, distinct from
 // `MarketplaceId` (which storefront the data represents). This split exists
 // because more than one provider can serve the same marketplace — e.g.
 // Amazon data can come from SerpAPI today and the direct PA-API later.
-export type ProviderId = "serpapi-amazon" | "serpapi-ebay" | "mercadolibre" | "amazon-paapi";
+export type ProviderId =
+  | "serpapi-amazon"
+  | "serpapi-ebay"
+  | "mercadolibre"
+  | "amazon-paapi"
+  | "ebay-direct"
+  | "walmart"
+  | "keepa";
 
 // Every field beyond `available`/`marketplace`/`query`/`listingCount` is
 // optional on purpose: if real data can't be retrieved, the field is simply
@@ -43,8 +70,8 @@ export interface MarketplaceSummary {
   sellerCount?: number;
   averageRating?: number;
   totalReviews?: number;
-  topListing?: MarketplaceListing;
-  listings: MarketplaceListing[];
+  topListing?: ProductListing;
+  listings: ProductListing[];
 }
 
 export interface MarketplaceSearchOptions {
@@ -52,13 +79,57 @@ export interface MarketplaceSearchOptions {
   limit?: number;
 }
 
-export interface MarketplaceProvider {
+// Whether a provider is currently reachable/authorized. Returned by
+// `getProviderStatus()` instead of doing a search, so the app can surface
+// connection state (e.g. /api/marketplace/status) without hitting the
+// network. `connected: false` must always carry a `reason` — see the "no
+// fake data" rule: an unavailable provider reports why, it never fabricates
+// results.
+export interface ProviderStatus {
+  connected: boolean;
+  reason?: string;
+}
+
+// Shared by every provider family (marketplace search today, historical
+// intelligence like Keepa in the future) so status introspection is uniform
+// even though their data methods differ.
+export interface Provider {
+  id: string;
+  name: string;
+  getProviderStatus(): Promise<ProviderStatus>;
+}
+
+export interface MarketplaceProvider extends Provider {
   id: ProviderId;
   // Which storefront this provider's data represents — see `ProviderId`.
   marketplace: MarketplaceId;
-  name: string;
   isConfigured(): boolean;
-  search(query: string, opts?: MarketplaceSearchOptions): Promise<MarketplaceSummary>;
+  searchProducts(query: string, opts?: MarketplaceSearchOptions): Promise<MarketplaceSummary>;
+  // Optional: most providers are search-only for now. A provider can add
+  // single-product lookup later without any other part of the app changing.
+  getProductDetails?(id: string, opts?: MarketplaceSearchOptions): Promise<ProductListing | null>;
+}
+
+// A point-in-time historical data snapshot for one already-known item (e.g.
+// Keepa's price/sales-rank history for an ASIN). Deliberately not a
+// MarketplaceProvider: these providers are keyed by product id, not a search
+// query — they enrich a listing the app already found, they never discover
+// new ones, so they're never registered in registry.ts's marketplaceProviders
+// array or included in searchAllMarketplaces.
+export interface ProductHistoryPoint {
+  timestamp: string;
+  price?: number;
+  salesRank?: number;
+}
+
+export interface ProductHistory {
+  id: string;
+  marketplace: MarketplaceId;
+  points: ProductHistoryPoint[];
+}
+
+export interface HistoricalIntelligenceProvider extends Provider {
+  getProductHistory(id: string): Promise<ProductHistory | null>;
 }
 
 export function unavailableSummary(

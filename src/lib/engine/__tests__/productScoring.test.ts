@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { MarketplaceListing } from "@/lib/marketplace/types";
+import type { ProductListing } from "@/lib/marketplace/types";
 import { computeRecommendation } from "../opportunityInsights";
 import { scoreMarketplaceProduct, type MarketContext } from "../productScoring";
 
-const LISTING: MarketplaceListing = {
+const LISTING: ProductListing = {
+  id: "amazon:https://example.com/wireless-earbuds",
   title: "Wireless Earbuds",
+  marketplace: "amazon",
   price: 35,
   currency: "USD",
   url: "https://example.com/wireless-earbuds",
@@ -12,7 +14,7 @@ const LISTING: MarketplaceListing = {
   reviewCount: 500,
   seller: "AudioCo",
   condition: "new",
-  freeShipping: true,
+  shippingInfo: { freeShipping: true },
 };
 
 const MARKET: MarketContext = {
@@ -49,7 +51,7 @@ describe("scoreMarketplaceProduct — dimensionSources honesty", () => {
   });
 
   it("falls back demand to ai-estimate when no review/rating signal exists", () => {
-    const noReviewListing: MarketplaceListing = { ...LISTING, rating: undefined, reviewCount: undefined };
+    const noReviewListing: ProductListing = { ...LISTING, rating: undefined, reviewCount: undefined };
     const noReviewProduct = scoreMarketplaceProduct(noReviewListing, MARKET);
     expect(noReviewProduct.dimensionSources.demand).toBe("ai-estimate");
   });
@@ -65,7 +67,7 @@ describe("scoreMarketplaceProduct — recommendation consistency", () => {
 });
 
 describe("scoreMarketplaceProduct — market-concentration-scaled brand penalty", () => {
-  const brandedListing: MarketplaceListing = { ...LISTING, title: "Apple AirPods Pro" };
+  const brandedListing: ProductListing = { ...LISTING, title: "Apple AirPods Pro" };
 
   it("penalizes brandOpportunity harder when the brand dominates the market", () => {
     const dominatedMarket: MarketContext = { ...MARKET, brandConcentration: { apple: 0.95 } };

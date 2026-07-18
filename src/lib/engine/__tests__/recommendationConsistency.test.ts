@@ -5,7 +5,7 @@
 // gates) — the same product could show two different verdicts. Every engine
 // path must now agree with computeRecommendation applied to its own output.
 import { describe, expect, it, vi } from "vitest";
-import type { MarketplaceListing, MarketplaceSummary } from "@/lib/marketplace/types";
+import type { MarketplaceSummary, ProductListing } from "@/lib/marketplace/types";
 import { analyzeProduct as heuristicAnalyze } from "../heuristicProvider";
 import { computeRecommendation } from "../opportunityInsights";
 import { scoreMarketplaceProduct, type MarketContext } from "../productScoring";
@@ -41,10 +41,10 @@ describe("productScoring.scoreMarketplaceProduct agrees with computeRecommendati
     currency: "USD",
   };
 
-  const listings: MarketplaceListing[] = [
-    { title: "Apple iPhone 15 Pro", price: 999, currency: "USD", url: "https://example.com/1", rating: 4.8, reviewCount: 9000 },
-    { title: "No-Name Phone Case", price: 8, currency: "USD", url: "https://example.com/2", rating: 3.1, reviewCount: 4 },
-    { title: "Ergonomic Standing Desk", price: 220, currency: "USD", url: "https://example.com/3", rating: 4.6, reviewCount: 800 },
+  const listings: ProductListing[] = [
+    { id: "ebay:1", title: "Apple iPhone 15 Pro", marketplace: "ebay", price: 999, currency: "USD", url: "https://example.com/1", rating: 4.8, reviewCount: 9000 },
+    { id: "ebay:2", title: "No-Name Phone Case", marketplace: "ebay", price: 8, currency: "USD", url: "https://example.com/2", rating: 3.1, reviewCount: 4 },
+    { id: "ebay:3", title: "Ergonomic Standing Desk", marketplace: "ebay", price: 220, currency: "USD", url: "https://example.com/3", rating: 4.6, reviewCount: 800 },
   ];
 
   for (const listing of listings) {

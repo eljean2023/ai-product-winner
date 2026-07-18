@@ -1,6 +1,7 @@
 import { createHash, createHmac } from "node:crypto";
-import type { MarketplaceListing, MarketplaceProvider, MarketplaceSummary } from "../types";
+import type { MarketplaceProvider, MarketplaceSummary, ProductListing, ProviderStatus } from "../types";
 import { unavailableSummary } from "../types";
+import { buildMarketplaceSummary } from "../aggregate";
 
 // Amazon Product Advertising API (PA-API 5.0) client — the official API
 // only, no scraping. Requires an Associates account with qualifying sales
@@ -96,7 +97,7 @@ interface PaapiListingPrice {
 
 interface PaapiItem {
   DetailPageURL?: string;
-  ItemInfo?: { Title?: { DisplayValue?: string } };
+  ItemInfo?: { Title?: { DisplayValue?: string }; ByLineInfo?: { Brand?: { DisplayValue?: string } } };
   Images?: { Primary?: { Medium?: { URL?: string } } };
   Offers?: { Listings?: { Price?: PaapiListingPrice; Condition?: { Value?: string } }[] };
   CustomerReviews?: { StarRating?: { Value?: number }; Count?: number };
@@ -107,36 +108,42 @@ interface PaapiSearchResponse {
   Errors?: { Message?: string }[];
 }
 
-function toListing(item: PaapiItem): MarketplaceListing | null {
+function toListing(item: PaapiItem): ProductListing | null {
   const title = item.ItemInfo?.Title?.DisplayValue;
   const url = item.DetailPageURL;
   const price = item.Offers?.Listings?.[0]?.Price?.Amount;
   if (!title || !url || typeof price !== "number") return null;
 
   return {
+    id: `amazon:${url}`,
     title,
+    marketplace: "amazon",
     price,
     currency: item.Offers?.Listings?.[0]?.Price?.Currency ?? "USD",
     url,
-    imageUrl: item.Images?.Primary?.Medium?.URL,
+    image: item.Images?.Primary?.Medium?.URL,
+    brand: item.ItemInfo?.ByLineInfo?.Brand?.DisplayValue,
     condition: item.Offers?.Listings?.[0]?.Condition?.Value,
     rating: item.CustomerReviews?.StarRating?.Value,
     reviewCount: item.CustomerReviews?.Count,
+    rawData: item,
   };
 }
 
-async function search(query: string): Promise<MarketplaceSummary> {
+const NOT_CONNECTED_REASON =
+  "Amazon Product Advertising API is not connected. Add AMAZON_ACCESS_KEY, AMAZON_SECRET_KEY, and AMAZON_PARTNER_TAG to enable live Amazon data.";
+
+async function getProviderStatus(): Promise<ProviderStatus> {
+  return readConfig() !== null ? { connected: true } : { connected: false, reason: NOT_CONNECTED_REASON };
+}
+
+async function searchProducts(query: string): Promise<MarketplaceSummary> {
   const trimmed = query.trim();
   if (!trimmed) return unavailableSummary("amazon", NAME, query, "No search query provided.");
 
   const config = readConfig();
   if (!config) {
-    return unavailableSummary(
-      "amazon",
-      NAME,
-      trimmed,
-      "Amazon Product Advertising API is not connected. Add AMAZON_ACCESS_KEY, AMAZON_SECRET_KEY, and AMAZON_PARTNER_TAG to enable live Amazon data."
-    );
+    return unavailableSummary("amazon", NAME, trimmed, NOT_CONNECTED_REASON);
   }
 
   const path = "/paapi5/searchitems";
@@ -147,6 +154,7 @@ async function search(query: string): Promise<MarketplaceSummary> {
     Marketplace: config.marketplace,
     Resources: [
       "ItemInfo.Title",
+      "ItemInfo.ByLineInfo",
       "Offers.Listings.Price",
       "Offers.Listings.Condition",
       "Images.Primary.Medium",
@@ -188,34 +196,13 @@ async function search(query: string): Promise<MarketplaceSummary> {
 
   const listings = (data.SearchResult?.Items ?? [])
     .map(toListing)
-    .filter((l): l is MarketplaceListing => l !== null);
+    .filter((l): l is ProductListing => l !== null);
 
   if (listings.length === 0) {
     return unavailableSummary("amazon", NAME, trimmed, "No live listings found on Amazon for this query.");
   }
 
-  const prices = listings.map((l) => l.price);
-  const averagePrice = prices.reduce((sum, p) => sum + p, 0) / prices.length;
-  const ratings = listings.map((l) => l.rating).filter((r): r is number => typeof r === "number");
-  const reviewCounts = listings
-    .map((l) => l.reviewCount)
-    .filter((r): r is number => typeof r === "number");
-
-  return {
-    marketplace: "amazon",
-    marketplaceName: NAME,
-    available: true,
-    query: trimmed,
-    listingCount: listings.length,
-    averagePrice: Math.round(averagePrice * 100) / 100,
-    minPrice: Math.min(...prices),
-    maxPrice: Math.max(...prices),
-    currency: listings[0].currency,
-    averageRating: ratings.length ? Math.round((ratings.reduce((s, r) => s + r, 0) / ratings.length) * 10) / 10 : undefined,
-    totalReviews: reviewCounts.length ? reviewCounts.reduce((s, r) => s + r, 0) : undefined,
-    topListing: listings[0],
-    listings: listings.slice(0, 10),
-  };
+  return buildMarketplaceSummary("amazon", NAME, trimmed, listings, { currency: listings[0].currency, limit: 10 });
 }
 
 export const amazonProvider: MarketplaceProvider = {
@@ -223,5 +210,6 @@ export const amazonProvider: MarketplaceProvider = {
   marketplace: "amazon",
   name: NAME,
   isConfigured: () => readConfig() !== null,
-  search,
+  getProviderStatus,
+  searchProducts,
 };

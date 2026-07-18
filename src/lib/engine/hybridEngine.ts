@@ -2,9 +2,13 @@
 // real marketplace data. This is the only file in the engine that knows
 // marketplace data exists at all — it talks to the marketplace layer only
 // through `searchAllMarketplaces`, never a specific provider, so the engine
-// stays decoupled from where the data actually comes from.
+// stays completely provider-independent: SerpAPI is just one
+// MarketplaceProvider among several (Mercado Libre, the direct Amazon
+// PA-API, and the prepared eBay-direct/Walmart/Keepa integrations) — none of
+// them is architected around, and any of them can be added, replaced, or
+// removed in @/lib/marketplace/registry without a single line changing here.
 import { searchAllMarketplaces } from "@/lib/marketplace/registry";
-import type { MarketplaceListing, MarketplaceSummary } from "@/lib/marketplace/types";
+import type { MarketplaceSummary, ProductListing } from "@/lib/marketplace/types";
 import { findBrand } from "./brands";
 import { getCategoryProfileByName } from "./categoryProfiles";
 import { analyzeProduct as heuristicAnalyze } from "./heuristicProvider";
@@ -32,7 +36,7 @@ function estimateSellerCount(listingCount: number, sellerCount?: number): number
 // Fraction (0-1) of a market's listings dominated by each detected brand,
 // keyed by lowercase brand name — used to scale brand-penalty severity by
 // how much of the actual market that brand controls.
-function computeBrandConcentration(listings: MarketplaceListing[]): Record<string, number> {
+function computeBrandConcentration(listings: ProductListing[]): Record<string, number> {
   if (listings.length === 0) return {};
   const counts = new Map<string, number>();
   for (const listing of listings) {

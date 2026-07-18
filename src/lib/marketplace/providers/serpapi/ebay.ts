@@ -1,5 +1,6 @@
-import type { MarketplaceListing, MarketplaceProvider, MarketplaceSummary } from "../../types";
+import type { MarketplaceProvider, MarketplaceSummary, ProductListing, ProviderStatus } from "../../types";
 import { unavailableSummary } from "../../types";
+import { buildMarketplaceSummary } from "../../aggregate";
 import { isSerpApiConfigured } from "./config";
 import { fetchSerpApi } from "./client";
 
@@ -23,23 +24,32 @@ interface SerpApiEbayResponse {
   organic_results?: SerpApiEbayItem[];
 }
 
-function toListing(item: SerpApiEbayItem): MarketplaceListing | null {
+function toListing(item: SerpApiEbayItem): ProductListing | null {
   const price = item.price?.extracted;
   if (!item.title || !item.link || typeof price !== "number") return null;
   return {
+    id: `ebay:${item.link}`,
     title: item.title,
+    marketplace: "ebay",
     price,
     currency: CURRENCY,
     url: item.link,
-    imageUrl: item.thumbnail,
+    image: item.thumbnail,
     condition: item.condition,
     rating: item.rating,
     reviewCount: item.reviews,
-    freeShipping: item.shipping?.toLowerCase().includes("free"),
+    shippingInfo: { freeShipping: item.shipping?.toLowerCase().includes("free") },
+    rawData: item,
   };
 }
 
-async function search(query: string): Promise<MarketplaceSummary> {
+async function getProviderStatus(): Promise<ProviderStatus> {
+  return isSerpApiConfigured()
+    ? { connected: true }
+    : { connected: false, reason: "eBay (via SerpAPI) is not connected. Add SERPAPI_API_KEY to enable live eBay data." };
+}
+
+async function searchProducts(query: string): Promise<MarketplaceSummary> {
   const trimmed = query.trim();
   if (!trimmed) return unavailableSummary("ebay", NAME, query, "No search query provided.");
 
@@ -60,32 +70,13 @@ async function search(query: string): Promise<MarketplaceSummary> {
 
   const listings = (result.data.organic_results ?? [])
     .map(toListing)
-    .filter((l): l is MarketplaceListing => l !== null);
+    .filter((l): l is ProductListing => l !== null);
 
   if (listings.length === 0) {
     return unavailableSummary("ebay", NAME, trimmed, "No live listings found on eBay for this query.");
   }
 
-  const prices = listings.map((l) => l.price);
-  const averagePrice = prices.reduce((sum, p) => sum + p, 0) / prices.length;
-  const ratings = listings.map((l) => l.rating).filter((r): r is number => typeof r === "number");
-  const reviewCounts = listings.map((l) => l.reviewCount).filter((r): r is number => typeof r === "number");
-
-  return {
-    marketplace: "ebay",
-    marketplaceName: NAME,
-    available: true,
-    query: trimmed,
-    listingCount: listings.length,
-    averagePrice: Math.round(averagePrice * 100) / 100,
-    minPrice: Math.min(...prices),
-    maxPrice: Math.max(...prices),
-    currency: CURRENCY,
-    averageRating: ratings.length ? Math.round((ratings.reduce((s, r) => s + r, 0) / ratings.length) * 10) / 10 : undefined,
-    totalReviews: reviewCounts.length ? reviewCounts.reduce((s, r) => s + r, 0) : undefined,
-    topListing: listings[0],
-    listings: listings.slice(0, 10),
-  };
+  return buildMarketplaceSummary("ebay", NAME, trimmed, listings, { currency: CURRENCY, limit: 10 });
 }
 
 export const serpApiEbayProvider: MarketplaceProvider = {
@@ -93,5 +84,6 @@ export const serpApiEbayProvider: MarketplaceProvider = {
   marketplace: "ebay",
   name: NAME,
   isConfigured: isSerpApiConfigured,
-  search,
+  getProviderStatus,
+  searchProducts,
 };

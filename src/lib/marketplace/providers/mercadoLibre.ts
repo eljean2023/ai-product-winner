@@ -1,13 +1,15 @@
 import { getMercadoLibreCountry, mercadoLibreSearchUrl } from "../countries";
 import type {
-  MarketplaceListing,
   MarketplaceProvider,
   MarketplaceSearchOptions,
   MarketplaceSummary,
+  ProductListing,
+  ProviderStatus,
 } from "../types";
 import { unavailableSummary } from "../types";
+import { buildMarketplaceSummary } from "../aggregate";
 import { isMercadoLibreConfigured } from "./mercadoLibreConfig";
-import { getValidAccessToken } from "./mercadoLibreOAuth";
+import { getConnectionStatus, getValidAccessToken } from "./mercadoLibreOAuth";
 
 const NAME = "Mercado Libre";
 const FETCH_TIMEOUT_MS = 8000;
@@ -80,20 +82,39 @@ function locationFromItem(item: MlSearchItem): string | undefined {
   return state ?? city ?? undefined;
 }
 
-function toListing(item: MlSearchItem, categoryName: string | undefined): MarketplaceListing | null {
+function toListing(item: MlSearchItem, categoryName: string | undefined): ProductListing | null {
   if (!item.title || typeof item.price !== "number" || !item.permalink) return null;
   return {
+    id: `mercadolibre:${item.permalink}`,
     title: item.title,
+    marketplace: "mercadolibre",
     price: item.price,
     currency: item.currency_id ?? "",
     url: item.permalink,
-    imageUrl: item.thumbnail,
+    image: item.thumbnail,
     seller: item.seller?.nickname,
     condition: item.condition,
     category: categoryName,
-    freeShipping: item.shipping?.free_shipping,
-    location: locationFromItem(item),
+    shippingInfo: { freeShipping: item.shipping?.free_shipping, location: locationFromItem(item) },
+    rawData: item,
   };
+}
+
+async function getProviderStatus(): Promise<ProviderStatus> {
+  if (!isMercadoLibreConfigured()) {
+    return {
+      connected: false,
+      reason:
+        "Mercado Libre is not configured. Set ML_CLIENT_ID, ML_CLIENT_SECRET, and ML_REDIRECT_URI to enable Mercado Libre login.",
+    };
+  }
+  const status = await getConnectionStatus();
+  return status.connected
+    ? { connected: true }
+    : {
+        connected: false,
+        reason: "Mercado Libre is not connected. Visit /api/marketplace/mercadolibre/connect to authorize your account.",
+      };
 }
 
 async function fetchWithAuth(url: string, token: string): Promise<Response> {
@@ -123,7 +144,7 @@ function extractItemId(permalink: string): string | undefined {
   return match ? match[0].replace("-", "") : undefined;
 }
 
-async function search(query: string, opts: MarketplaceSearchOptions = {}): Promise<MarketplaceSummary> {
+async function searchProducts(query: string, opts: MarketplaceSearchOptions = {}): Promise<MarketplaceSummary> {
   const trimmed = query.trim();
   if (!trimmed) return unavailableSummary("mercadolibre", NAME, query, "No search query provided.");
 
@@ -213,7 +234,7 @@ async function search(query: string, opts: MarketplaceSearchOptions = {}): Promi
 
   const listings = rawItems
     .map((item) => toListing(item, item.category_id ? categoryNames.get(item.category_id) : undefined))
-    .filter((l): l is MarketplaceListing => l !== null);
+    .filter((l): l is ProductListing => l !== null);
 
   if (listings.length === 0) {
     return unavailableSummary(
@@ -224,31 +245,12 @@ async function search(query: string, opts: MarketplaceSearchOptions = {}): Promi
     );
   }
 
-  const prices = listings.map((l) => l.price);
-  const averagePrice = prices.reduce((sum, p) => sum + p, 0) / prices.length;
-  const sellerCount = new Set(listings.map((l) => l.seller).filter(Boolean)).size;
   const topListing = listings[0];
-
   const { rating, total } = await tryFetchReviews(extractItemId(topListing.url), token);
   if (rating !== undefined) topListing.rating = rating;
   if (total !== undefined) topListing.reviewCount = total;
 
-  return {
-    marketplace: "mercadolibre",
-    marketplaceName: NAME,
-    available: true,
-    query: trimmed,
-    listingCount: listings.length,
-    averagePrice: Math.round(averagePrice * 100) / 100,
-    minPrice: Math.min(...prices),
-    maxPrice: Math.max(...prices),
-    currency: country.currency,
-    sellerCount: sellerCount || undefined,
-    averageRating: rating,
-    totalReviews: total,
-    topListing,
-    listings,
-  };
+  return buildMarketplaceSummary("mercadolibre", NAME, trimmed, listings, { currency: country.currency });
 }
 
 export const mercadoLibreProvider: MarketplaceProvider = {
@@ -256,5 +258,6 @@ export const mercadoLibreProvider: MarketplaceProvider = {
   marketplace: "mercadolibre",
   name: NAME,
   isConfigured: isMercadoLibreConfigured,
-  search,
+  getProviderStatus,
+  searchProducts,
 };

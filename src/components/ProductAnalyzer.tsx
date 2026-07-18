@@ -178,7 +178,7 @@ export default function ProductAnalyzer({ ref }: ProductAnalyzerProps) {
   }
 
   const styles = result ? RECOMMENDATION_STYLES[result.recommendation] : null;
-  const heroImage = result?.marketplaceData.find((s) => s.available)?.topListing?.imageUrl;
+  const heroImage = result?.marketplaceData.find((s) => s.available)?.topListing?.image;
   const insights = useMemo(() => (result ? generateOpportunityInsights(result) : null), [result]);
 
   return (
