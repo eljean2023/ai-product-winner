@@ -18,6 +18,9 @@ export function discoverOpportunities(query: string, limit?: number, opts?: Engi
   return marketIntelligence.discoverOpportunities(query, limit, opts);
 }
 
+export { generateOpportunityInsights } from "./opportunityInsights";
+export type { OpportunityInsights } from "./opportunityInsights";
+
 export type {
   AnalysisResult,
   ConfidenceLevel,

@@ -1,14 +1,28 @@
 // Scores one real marketplace listing. Every identifying field on the
 // result (title, price, image, permalink, ...) is copied straight from the
 // listing — this module only ever adds scoring dimensions on top, using
-// real, query-level marketplace signal wherever one exists. Dimensions with
-// no real-world proxy (bundle potential, supplier availability, repeat
-// purchase, trend stability) fall back to the same category-baseline
-// heuristic used elsewhere in the engine, seeded off the listing's own
-// permalink so they're deterministic per real product rather than random.
+// real, per-listing signal (rating, review count, price, rank) wherever one
+// exists so that two different real products from the same search score
+// differently instead of inheriting one identical market-wide number.
+// Dimensions with no real-world proxy (bundle potential, supplier
+// availability, repeat purchase, trend stability) fall back to the same
+// category-baseline heuristic used elsewhere in the engine, seeded off the
+// listing's own permalink so they're deterministic per real product rather
+// than random.
 import type { MarketplaceId, MarketplaceListing } from "@/lib/marketplace/types";
 import { FALLBACK_PROFILE, findCategoryProfile } from "./categoryProfiles";
 import { computeOpportunityScore, deriveDimensions, pickRecommendation } from "./heuristicProvider";
+import { detectBrand, findBrand } from "./brands";
+import {
+  applyBrandAdjustment,
+  clamp,
+  computeMarketSaturation,
+  logScale,
+  priceBandBonus,
+  ratingReturnPenalty,
+  reviewDemandSignal,
+} from "./scoringUtils";
+import { generateSellingAngle } from "./sellingAngle";
 import type { DimensionScores, ProductOpportunity } from "./types";
 
 export interface MarketContext {
@@ -18,33 +32,8 @@ export interface MarketContext {
   totalSellers: number;
   priceMin: number;
   priceMax: number;
+  averagePrice?: number;
   currency: string;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-const KNOWN_BRANDS = [
-  "apple", "samsung", "sony", "xiaomi", "lg", "hp", "dell", "lenovo", "nike",
-  "adidas", "logitech", "microsoft", "huawei", "motorola", "asus", "acer",
-  "jbl", "bose", "canon", "nikon", "philips", "whirlpool", "dewalt", "bosch",
-];
-
-function detectBrand(title: string): boolean {
-  const lower = title.toLowerCase();
-  return KNOWN_BRANDS.some((brand) => lower.includes(brand));
-}
-
-// Currency-independent, log-scaled so a handful of listings doesn't read as
-// "huge demand" but hundreds do — same shape as the query-level adjustment
-// used for single-product analysis, applied here per listing since every
-// product from the same search shares the same real query-level signal.
-function marketplaceSignal(totalListings: number, totalSellers: number): { demand: number; competition: number } {
-  return {
-    demand: clamp(Math.round(25 + Math.log10(totalListings + 1) * 22), 0, 100),
-    competition: clamp(Math.round(15 + Math.log10(totalSellers + 1) * 24), 0, 100),
-  };
 }
 
 function pricePercentile(price: number, min: number, max: number): number {
@@ -55,27 +44,68 @@ function pricePercentile(price: number, min: number, max: number): number {
 function explainProduct(
   listing: MarketplaceListing,
   market: MarketContext,
-  dims: DimensionScores
+  dims: DimensionScores,
+  branded: boolean,
+  sellingAngle: string
 ): string {
   const demandLabel = dims.demand >= 60 ? "strong" : dims.demand >= 40 ? "moderate" : "limited";
   const parts = [
     `${market.totalListings} active listing${market.totalListings === 1 ? "" : "s"} on ${market.marketplaceName} for this search show ${demandLabel} validated demand.`,
   ];
+  if (listing.rating !== undefined && listing.reviewCount !== undefined) {
+    parts.push(`Rated ${listing.rating} from ${listing.reviewCount} reviews.`);
+  }
+  if (branded) {
+    const brandName = findBrand(listing.title);
+    parts.push(`Dominated by ${brandName} — limited brand-building room here.`);
+  }
   if (listing.freeShipping) parts.push("Free shipping is already offered, keeping fulfillment simple.");
   if (listing.condition) parts.push(`Listed as ${listing.condition}.`);
+  parts.push(sellingAngle);
   return parts.join(" ");
 }
 
-export function scoreMarketplaceProduct(listing: MarketplaceListing, market: MarketContext): ProductOpportunity {
+export function scoreMarketplaceProduct(
+  listing: MarketplaceListing,
+  market: MarketContext,
+  rank = 0
+): ProductOpportunity {
   const profile = findCategoryProfile(listing.title) ?? FALLBACK_PROFILE;
   const seed = listing.url;
 
   const baseline = deriveDimensions(profile, seed);
-  const { demand, competition } = marketplaceSignal(market.totalListings, market.totalSellers);
+
+  // Demand blends the market-wide signal (how many listings answer this
+  // search at all) with this listing's own proven demand — its review
+  // count and rating — plus a small nudge for how early it ranked in real
+  // search results. This is what makes two different products from the
+  // same search actually diverge instead of both inheriting one shared
+  // market-level demand number.
+  const marketDemand = logScale(market.totalListings, 25, 22);
+  const perListingDemand = reviewDemandSignal(listing.reviewCount, listing.rating);
+  const rankBonus = clamp(6 - rank, -6, 6);
+  const demand =
+    perListingDemand !== null
+      ? clamp(Math.round(marketDemand * 0.4 + perListingDemand * 0.5 + rankBonus), 0, 100)
+      : clamp(marketDemand + rankBonus, 0, 100);
+
+  const competition = logScale(market.totalSellers, 15, 24);
+
+  const marketSaturation = computeMarketSaturation(
+    market.totalListings,
+    market.priceMin,
+    market.priceMax,
+    market.averagePrice
+  );
 
   const percentile = pricePercentile(listing.price, market.priceMin, market.priceMax);
   const conditionMarginBump = listing.condition === "new" ? 8 : listing.condition === "used" ? -8 : 0;
-  const margin = clamp(Math.round(baseline.margin * 0.4 + percentile * 0.6) + conditionMarginBump, 0, 100);
+  const currency = listing.currency || market.currency;
+  const margin = clamp(
+    Math.round(baseline.margin * 0.4 + percentile * 0.6) + conditionMarginBump + priceBandBonus(listing.price, currency),
+    0,
+    100
+  );
 
   const shippingComplexity = clamp(
     listing.freeShipping ? Math.round(baseline.shippingComplexity * 0.6) : baseline.shippingComplexity,
@@ -83,31 +113,29 @@ export function scoreMarketplaceProduct(listing: MarketplaceListing, market: Mar
     100
   );
 
-  const branded = detectBrand(listing.title);
-  const brandOpportunity = clamp(
-    branded ? Math.round(baseline.brandOpportunity * 0.5) : baseline.brandOpportunity,
-    0,
-    100
-  );
-
   const trustPenalty = (listing.imageUrl ? 0 : 6) + (listing.seller ? 0 : 6);
   const returnRisk = clamp(
-    baseline.returnRisk + (listing.condition === "used" ? 10 : 0) + trustPenalty,
+    baseline.returnRisk + (listing.condition === "used" ? 10 : 0) + trustPenalty + ratingReturnPenalty(listing.rating),
     0,
     100
   );
 
-  const dimensions: DimensionScores = {
-    ...baseline,
-    demand,
-    competition,
-    margin,
-    shippingComplexity,
-    brandOpportunity,
-    returnRisk,
-  };
+  const branded = detectBrand(listing.title);
+  const dimensions: DimensionScores = applyBrandAdjustment(
+    {
+      ...baseline,
+      demand,
+      competition,
+      margin,
+      shippingComplexity,
+      returnRisk,
+      marketSaturation,
+    },
+    branded
+  );
 
   const opportunityScore = computeOpportunityScore(profile, dimensions);
+  const sellingAngle = generateSellingAngle(listing.title, profile.category, branded, dimensions.margin, seed);
 
   return {
     title: listing.title,
@@ -115,7 +143,7 @@ export function scoreMarketplaceProduct(listing: MarketplaceListing, market: Mar
     marketplace: market.marketplace,
     marketplaceName: market.marketplaceName,
     price: listing.price,
-    currency: listing.currency || market.currency,
+    currency,
     imageUrl: listing.imageUrl,
     permalink: listing.url,
     seller: listing.seller,
@@ -125,7 +153,8 @@ export function scoreMarketplaceProduct(listing: MarketplaceListing, market: Mar
     opportunityScore,
     recommendation: pickRecommendation(opportunityScore),
     dimensions,
-    shortExplanation: explainProduct(listing, market, dimensions),
+    shortExplanation: explainProduct(listing, market, dimensions, branded, sellingAngle),
+    sellingAngle,
     dataConfidence: "hybrid",
   };
 }

@@ -2,6 +2,9 @@ import { seededValue } from "./hash";
 import { FALLBACK_PROFILE, findCategoryProfile, type CategoryProfile } from "./categoryProfiles";
 import { computeConfidence } from "./confidence";
 import { generateReasoning } from "./reasoning";
+import { detectBrand, findBrand } from "./brands";
+import { applyBrandAdjustment } from "./scoringUtils";
+import { generateSellingAngle } from "./sellingAngle";
 import {
   RISK_DIMENSIONS,
   type AnalysisResult,
@@ -64,11 +67,20 @@ function derivePriceBand(profile: CategoryProfile, seed: string) {
 function buildAnalysis(query: string, profile: CategoryProfile, matchedCategory: boolean): AnalysisResult {
   const seed = query.toLowerCase() || "unnamed product";
 
-  const dimensions = deriveDimensions(profile, seed);
+  const branded = detectBrand(query);
+  const dimensions = applyBrandAdjustment(deriveDimensions(profile, seed), branded);
   const opportunityScore = computeOpportunityScore(profile, dimensions);
   const { priceMin, priceMax } = derivePriceBand(profile, seed);
   const { positives, risks } = generateReasoning(profile, dimensions, seed);
   const { level: confidence, reason: confidenceReason } = computeConfidence(query, matchedCategory);
+  const sellingAngle = generateSellingAngle(query, profile.category, branded, dimensions.margin, seed);
+
+  if (branded) {
+    const brandName = findBrand(query);
+    risks.unshift(`Dominated by ${brandName} and other established brands — a new entrant will struggle to out-rank them organically.`);
+  } else {
+    positives.unshift("Private label opportunity — no dominant brand controls this search yet.");
+  }
 
   return {
     productName: titleCase(query) || "Unnamed Product",
@@ -81,11 +93,12 @@ function buildAnalysis(query: string, profile: CategoryProfile, matchedCategory:
     priceMin,
     priceMax,
     priceCurrency: "USD",
-    positives,
-    risks,
+    positives: positives.slice(0, 6),
+    risks: risks.slice(0, 4),
     demand: dimensions.demand,
     competition: dimensions.competition,
     marginPotential: dimensions.margin,
+    sellingAngle,
     marketplaceData: [],
     dataConfidence: "heuristic-only",
   };

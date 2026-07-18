@@ -24,12 +24,14 @@ export type DimensionKey =
   | "brandOpportunity"
   | "repeatPurchase"
   | "trendStability"
-  | "returnRisk";
+  | "returnRisk"
+  | "marketSaturation";
 
 export const RISK_DIMENSIONS: DimensionKey[] = [
   "competition",
   "shippingComplexity",
   "returnRisk",
+  "marketSaturation",
 ];
 
 export const DIMENSION_LABELS: Record<DimensionKey, string> = {
@@ -43,6 +45,7 @@ export const DIMENSION_LABELS: Record<DimensionKey, string> = {
   repeatPurchase: "Repeat Purchase Potential",
   trendStability: "Trend Stability",
   returnRisk: "Return Risk",
+  marketSaturation: "Market Saturation",
 };
 
 export type DimensionScores = Record<DimensionKey, number>;
@@ -66,6 +69,9 @@ export interface AnalysisResult {
   demand: number;
   competition: number;
   marginPotential: number;
+  // One-line positioning suggestion for a new seller/brand — deterministic,
+  // derived from the product's own title/category, never invented.
+  sellingAngle: string;
   // Real marketplace data blended into this result, one entry per provider
   // (Mercado Libre, Amazon, ...), each possibly `available: false`.
   marketplaceData: MarketplaceSummary[];
@@ -93,6 +99,7 @@ export interface ProductOpportunity {
   recommendation: Recommendation;
   dimensions: DimensionScores;
   shortExplanation: string;
+  sellingAngle: string;
   dataConfidence: DataConfidence;
 }
 

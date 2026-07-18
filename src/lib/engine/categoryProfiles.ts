@@ -1,3 +1,4 @@
+import { clamp } from "./scoringUtils";
 import type { DimensionKey } from "./types";
 
 export interface DimensionRange {
@@ -28,7 +29,17 @@ function r(min: number, max: number): DimensionRange {
   return { min, max };
 }
 
-export const CATEGORY_PROFILES: CategoryProfile[] = [
+// Every profile below is authored without `marketSaturation` — see
+// `finalizeProfile`, which derives it from each category's own competition
+// band and injects it as the 11th dimension. This keeps saturation
+// internally consistent with each category's existing competition
+// assumptions instead of requiring 15 more hand-picked ranges to maintain.
+type ProfileDraft = Omit<CategoryProfile, "ranges" | "weights"> & {
+  ranges: Omit<CategoryProfile["ranges"], "marketSaturation">;
+  weights: Omit<CategoryProfile["weights"], "marketSaturation">;
+};
+
+const RAW_CATEGORY_PROFILES: ProfileDraft[] = [
   {
     category: "Gaming",
     keywords: [
@@ -392,9 +403,10 @@ export const CATEGORY_PROFILES: CategoryProfile[] = [
   {
     category: "Electronics",
     keywords: [
-      "earbud", "earphone", "headphone", "bluetooth speaker", "speaker",
-      "charger", "usb-c", "usb c", "power bank", "charging cable", "cable",
-      "phone case", "phone cover", "smartwatch", "laptop stand", "electronic",
+      "earbud", "earphone", "headphone", "airpods", "galaxy buds",
+      "bluetooth speaker", "speaker", "charger", "usb-c", "usb c",
+      "power bank", "charging cable", "cable", "phone case", "phone cover",
+      "smartwatch", "laptop stand", "electronic",
     ],
     ranges: {
       demand: r(70, 95), competition: r(75, 98), margin: r(35, 65),
@@ -424,7 +436,7 @@ export const CATEGORY_PROFILES: CategoryProfile[] = [
 // Wide, unopinionated bands used when no category keyword matches. The
 // spread is intentionally broad since we have no category signal to narrow
 // it — confidence scoring reflects that uncertainty separately.
-export const FALLBACK_PROFILE: CategoryProfile = {
+const RAW_FALLBACK_PROFILE: ProfileDraft = {
   category: "General Merchandise",
   keywords: [],
   ranges: {
@@ -449,6 +461,38 @@ export const FALLBACK_PROFILE: CategoryProfile = {
     "Demand and competition estimates are broader without a matched category",
   ],
 };
+
+const MARKET_SATURATION_WEIGHT = 0.08;
+
+// Derives Market Saturation from each category's own competition band
+// (more entrenched sellers implies a more saturated market) and renormalizes
+// the other nine weights so the full set of eleven still sums to 1.
+function finalizeProfile(draft: ProfileDraft): CategoryProfile {
+  const marketSaturation: DimensionRange = {
+    min: clamp(draft.ranges.competition.min - 5, 5, 95),
+    max: clamp(draft.ranges.competition.max + 5, 10, 98),
+  };
+
+  const priorWeightSum = (Object.values(draft.weights) as number[]).reduce((a, b) => a + b, 0);
+  const scale = (1 - MARKET_SATURATION_WEIGHT) / priorWeightSum;
+  const weights = Object.fromEntries(
+    (Object.entries(draft.weights) as [DimensionKey, number][]).map(([key, value]) => [
+      key,
+      Math.round(value * scale * 1000) / 1000,
+    ])
+  ) as CategoryProfile["weights"];
+  weights.marketSaturation = MARKET_SATURATION_WEIGHT;
+
+  return {
+    ...draft,
+    ranges: { ...draft.ranges, marketSaturation } as CategoryProfile["ranges"],
+    weights,
+  };
+}
+
+export const CATEGORY_PROFILES: CategoryProfile[] = RAW_CATEGORY_PROFILES.map(finalizeProfile);
+
+export const FALLBACK_PROFILE: CategoryProfile = finalizeProfile(RAW_FALLBACK_PROFILE);
 
 export function findCategoryProfile(query: string): CategoryProfile | null {
   const lower = query.toLowerCase();

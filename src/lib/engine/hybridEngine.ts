@@ -9,6 +9,7 @@ import { getCategoryProfileByName } from "./categoryProfiles";
 import { analyzeProduct as heuristicAnalyze, pickRecommendation } from "./heuristicProvider";
 import { scoreMarketplaceProduct } from "./productScoring";
 import type { MarketContext } from "./productScoring";
+import { clamp, computeMarketSaturation } from "./scoringUtils";
 import type {
   AnalysisResult,
   DataConfidence,
@@ -16,10 +17,6 @@ import type {
   EngineOptions,
   MarketIntelligenceProvider,
 } from "./types";
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
 
 // Prefer the first available marketplace in registry priority order (see
 // marketplaceProviders in registry.ts) as the primary real price band.
@@ -34,6 +31,7 @@ interface MarketplaceAdjustment {
   demandFromData: number;
   competitionFromData: number;
   marginFromData?: number;
+  marketSaturationFromData: number;
   marketplaceScore: number;
   primary?: MarketplaceSummary;
 }
@@ -64,13 +62,21 @@ function computeAdjustment(base: AnalysisResult, summaries: MarketplaceSummary[]
     marginFromData = clamp(Math.round(30 + relativePosition * 50), 0, 100);
   }
 
-  const marketplaceScore = Math.round(
-    demandFromData * 0.4 +
-      (100 - competitionFromData) * 0.35 +
-      (marginFromData ?? base.dimensions.margin) * 0.25
+  const marketSaturationFromData = computeMarketSaturation(
+    totalListings,
+    primary?.minPrice,
+    primary?.maxPrice,
+    primary?.averagePrice
   );
 
-  return { demandFromData, competitionFromData, marginFromData, marketplaceScore, primary };
+  const marketplaceScore = Math.round(
+    demandFromData * 0.3 +
+      (100 - competitionFromData) * 0.25 +
+      (marginFromData ?? base.dimensions.margin) * 0.2 +
+      (100 - marketSaturationFromData) * 0.25
+  );
+
+  return { demandFromData, competitionFromData, marginFromData, marketSaturationFromData, marketplaceScore, primary };
 }
 
 function buildMarketplaceNotes(summaries: MarketplaceSummary[]): { positives: string[]; risks: string[] } {
@@ -128,6 +134,7 @@ function withMarketplaceData(base: AnalysisResult, summaries: MarketplaceSummary
       adjustment.marginFromData !== undefined
         ? Math.round(base.dimensions.margin * 0.7 + adjustment.marginFromData * 0.3)
         : base.dimensions.margin,
+    marketSaturation: Math.round(base.dimensions.marketSaturation * 0.6 + adjustment.marketSaturationFromData * 0.4),
   };
 
   const opportunityScore = Math.round(base.opportunityScore * 0.6 + adjustment.marketplaceScore * 0.4);
@@ -189,9 +196,10 @@ export async function discoverOpportunities(
       totalSellers: summary.sellerCount ?? summary.listingCount,
       priceMin: summary.minPrice ?? summary.averagePrice ?? 0,
       priceMax: summary.maxPrice ?? summary.averagePrice ?? 0,
+      averagePrice: summary.averagePrice,
       currency: summary.currency ?? "",
     };
-    return summary.listings.map((listing) => scoreMarketplaceProduct(listing, market));
+    return summary.listings.map((listing, rank) => scoreMarketplaceProduct(listing, market, rank));
   });
 
   scored.sort((a, b) => b.opportunityScore - a.opportunityScore);

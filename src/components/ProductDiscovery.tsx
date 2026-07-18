@@ -209,9 +209,9 @@ export default function ProductDiscovery({ onAnalyze }: ProductDiscoveryProps) {
           {products.length > 0 && (
             <p className="mt-6 text-xs text-slate-500">
               <span className="font-semibold text-slate-600 dark:text-slate-400">
-                Real Marketplace Data —
+                AI Market Estimate —
               </span>{" "}
-              Ranked using the AI Opportunity Engine on real listings from every connected marketplace for this search.
+              Ranked using real listings from every connected marketplace, scored by the AI Opportunity Engine. Scores combine marketplace signals and category intelligence — additional providers like Keepa will improve historical analysis.
             </p>
           )}
         </section>

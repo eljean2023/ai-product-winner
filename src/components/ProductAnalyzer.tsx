@@ -1,8 +1,9 @@
 "use client";
 
-import { useImperativeHandle, useState, type FormEvent, type Ref } from "react";
+import { useImperativeHandle, useMemo, useState, type FormEvent, type Ref } from "react";
 import type { AnalysisResult, DimensionKey } from "@/lib/engine";
 import { DIMENSION_LABELS, RISK_DIMENSIONS } from "@/lib/engine/types";
+import { generateOpportunityInsights } from "@/lib/engine/opportunityInsights";
 import { MarketplaceButtons, MarketplaceChip } from "./MarketplaceDisplay";
 import { useMarketplaceCountry } from "./MarketplaceCountryContext";
 import { CONFIDENCE_STYLES, RECOMMENDATION_STYLES } from "./recommendationStyles";
@@ -13,6 +14,7 @@ const DIMENSION_ORDER: DimensionKey[] = [
   "demand",
   "margin",
   "competition",
+  "marketSaturation",
   "bundlePotential",
   "brandOpportunity",
   "repeatPurchase",
@@ -147,6 +149,7 @@ export default function ProductAnalyzer({ ref }: ProductAnalyzerProps) {
 
   const styles = result ? RECOMMENDATION_STYLES[result.recommendation] : null;
   const heroImage = result?.marketplaceData.find((s) => s.available)?.topListing?.imageUrl;
+  const insights = useMemo(() => (result ? generateOpportunityInsights(result) : null), [result]);
 
   return (
     <div>
@@ -235,6 +238,10 @@ export default function ProductAnalyzer({ ref }: ProductAnalyzerProps) {
                 <p className="mt-2 text-sm font-medium text-slate-600 dark:text-slate-400">
                   {result.dataConfidence === "hybrid" ? "Current price range" : "Typical price range"}: {result.priceMin} - {result.priceMax} {result.priceCurrency}
                 </p>
+                <p className="mt-2 max-w-sm text-sm text-slate-600 dark:text-slate-400">
+                  <span className="font-semibold text-dark dark:text-slate-100">Suggested selling angle:</span>{" "}
+                  {result.sellingAngle}
+                </p>
               </div>
             </div>
             <div className="flex flex-col items-center">
@@ -263,12 +270,32 @@ export default function ProductAnalyzer({ ref }: ProductAnalyzerProps) {
 
           <p className="mt-4 text-xs text-slate-500">
             <span className="font-semibold text-slate-600 dark:text-slate-400">
-              {result.dataConfidence === "hybrid" ? "AI + Marketplace Estimate —" : "AI Market Estimate —"}
+              AI Market Estimate —
             </span>{" "}
             {result.dataConfidence === "hybrid"
-              ? "Dimensions blend category heuristics with live marketplace listings above."
-              : "No live marketplace match was found, so every dimension above comes from category patterns and this product's own name."}
+              ? "Scores combine real marketplace signals (listings, sellers, ratings, reviews) with category intelligence. Additional providers like Keepa will improve historical analysis."
+              : "No live marketplace match was found, so scores combine category intelligence and this product's own name only. Live marketplace signals and additional providers like Keepa will improve this further."}
           </p>
+
+          {insights && (
+            <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/50">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  AI Recommendation
+                </span>
+                <span
+                  className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${RECOMMENDATION_STYLES[insights.recommendation].badge}`}
+                >
+                  {insights.recommendation}
+                </span>
+              </div>
+              <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{insights.summary}</p>
+              <p className="mt-3 text-sm text-slate-700 dark:text-slate-300">
+                <span className="font-semibold text-dark dark:text-slate-100">Selling Strategy:</span>{" "}
+                {insights.suggestedStrategy}
+              </p>
+            </div>
+          )}
 
           <div className="mt-8 grid gap-6 sm:grid-cols-2">
             <div>

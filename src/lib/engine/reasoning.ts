@@ -53,6 +53,10 @@ const DIMENSION_PHRASING: Record<DimensionKey, DimensionPhrasing> = {
     good: (_cat, v) => `Return Risk is low at ${v}/100 — customers are unlikely to send this back`,
     bad: (_cat, v) => `Return Risk runs ${v}/100 — expect returns from fit issues, defects, or buyer's remorse`,
   },
+  marketSaturation: {
+    good: (_cat, v) => `Market Saturation is low at ${v}/100 — this is still an emerging niche with room for new entrants`,
+    bad: (_cat, v) => `Market Saturation runs ${v}/100 — thousands of near-identical listings already compete here`,
+  },
 };
 
 function favorability(key: DimensionKey, value: number): number {
