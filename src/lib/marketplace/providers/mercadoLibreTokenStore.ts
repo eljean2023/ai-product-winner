@@ -1,14 +1,15 @@
-import fs from "node:fs";
-import path from "node:path";
+import { getPrisma } from "@/lib/prisma";
 
-// Persists the Mercado Libre OAuth tokens to disk so a connected account
-// survives dev-server restarts (an in-memory cache does not). This is a
-// single-tenant app with no database and no user/session system, so there
-// is exactly one stored record: the one Mercado Libre account this
-// deployment is connected as.
+// Persists the Mercado Libre OAuth tokens to Postgres (via Prisma) so a
+// connected account survives serverless redeploys and cold starts. A prior
+// version of this store wrote to a local .data/ JSON file — that worked in
+// long-running dev servers but silently never persisted on Vercel, whose
+// serverless functions run against a read-only filesystem outside /tmp. See
+// the MarketplaceOAuthToken model in prisma/schema.prisma.
 //
-// The file lives outside `src/` and is gitignored (see `.data/` in
-// .gitignore) — never commit it, it contains a live refresh token.
+// This is a single-tenant app with no user/session system, so there is
+// exactly one stored record per `provider`: the one Mercado Libre account
+// this deployment is connected as.
 
 export interface MercadoLibreTokenRecord {
   accessToken: string;
@@ -20,27 +21,44 @@ export interface MercadoLibreTokenRecord {
   obtainedAt: number; // epoch ms
 }
 
-const STORE_DIR = path.join(process.cwd(), ".data");
-const STORE_PATH = path.join(STORE_DIR, "mercadolibre-token.json");
+const PROVIDER = "mercadolibre";
 
-export function readTokenRecord(): MercadoLibreTokenRecord | null {
+export async function readTokenRecord(): Promise<MercadoLibreTokenRecord | null> {
   try {
-    const raw = fs.readFileSync(STORE_PATH, "utf8");
-    return JSON.parse(raw) as MercadoLibreTokenRecord;
-  } catch {
+    const row = await getPrisma().marketplaceOAuthToken.findUnique({ where: { provider: PROVIDER } });
+    if (!row) return null;
+    return {
+      accessToken: row.accessToken,
+      refreshToken: row.refreshToken,
+      expiresAt: row.expiresAt.getTime(),
+      userId: row.userId ?? 0,
+      nickname: row.nickname ?? "",
+      siteId: row.siteId ?? undefined,
+      obtainedAt: row.obtainedAt.getTime(),
+    };
+  } catch (err) {
+    console.error("[ML token store] read failed", err);
     return null;
   }
 }
 
-export function writeTokenRecord(record: MercadoLibreTokenRecord): void {
-  fs.mkdirSync(STORE_DIR, { recursive: true });
-  fs.writeFileSync(STORE_PATH, JSON.stringify(record, null, 2), { mode: 0o600 });
+export async function writeTokenRecord(record: MercadoLibreTokenRecord): Promise<void> {
+  const data = {
+    accessToken: record.accessToken,
+    refreshToken: record.refreshToken,
+    expiresAt: new Date(record.expiresAt),
+    userId: record.userId,
+    nickname: record.nickname,
+    siteId: record.siteId,
+    obtainedAt: new Date(record.obtainedAt),
+  };
+  await getPrisma().marketplaceOAuthToken.upsert({
+    where: { provider: PROVIDER },
+    create: { provider: PROVIDER, ...data },
+    update: data,
+  });
 }
 
-export function clearTokenRecord(): void {
-  try {
-    fs.unlinkSync(STORE_PATH);
-  } catch {
-    // Already gone — nothing to clear.
-  }
+export async function clearTokenRecord(): Promise<void> {
+  await getPrisma().marketplaceOAuthToken.deleteMany({ where: { provider: PROVIDER } });
 }

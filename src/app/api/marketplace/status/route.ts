@@ -16,9 +16,12 @@ async function safeConnectionStatus(): ReturnType<typeof getConnectionStatus> {
 
 async function safeKeepaStatus() {
   try {
-    return await keepaProvider.getProviderStatus();
+    const status = await keepaProvider.getProviderStatus();
+    // Keepa has no separate OAuth handshake — a valid API key means
+    // connected, so "configured" and "connected" are the same thing here.
+    return { ...status, configured: status.connected };
   } catch (err) {
-    return { connected: false, reason: err instanceof Error ? err.message : "Status check failed." };
+    return { connected: false, configured: false, reason: err instanceof Error ? err.message : "Status check failed." };
   }
 }
 

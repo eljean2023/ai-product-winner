@@ -15,6 +15,12 @@ export async function GET(request: NextRequest) {
   const cookieState = request.cookies.get(STATE_COOKIE)?.value;
 
   function redirectHome(status: "connected" | "error", message?: string) {
+    // The redirect target (?ml_status/?ml_message) is read and displayed by
+    // MarketplaceIntelligence.tsx — but that's a best-effort UI surface, not
+    // a substitute for a server-side record. Log every failure here too so
+    // it shows up in Vercel's function logs even if the client never lands
+    // on the homepage (closed tab, network drop, etc.).
+    if (status === "error") console.error(`[ML OAuth] callback failed: ${message ?? "unknown error"}`);
     const url = new URL("/", request.url);
     url.searchParams.set("ml_status", status);
     if (message) url.searchParams.set("ml_message", message);
@@ -27,7 +33,10 @@ export async function GET(request: NextRequest) {
     return redirectHome("error", `Mercado Libre authorization was denied (${authError}).`);
   }
   if (!code || !state || !cookieState || state !== cookieState) {
-    return redirectHome("error", "Mercado Libre authorization failed: invalid or expired state.");
+    return redirectHome(
+      "error",
+      "Mercado Libre authorization failed: invalid or expired state. Try connecting again — the login link expires after 10 minutes."
+    );
   }
 
   const result = await exchangeCodeForToken(code);

@@ -137,7 +137,7 @@ export async function exchangeCodeForToken(code: string): Promise<ExchangeResult
       siteId,
       obtainedAt: Date.now(),
     };
-    writeTokenRecord(record);
+    await writeTokenRecord(record);
     console.log(`${DEBUG_PREFIX} connected as ${account} (user_id=${record.userId})`);
     return { ok: true, account };
   } catch (err) {
@@ -160,7 +160,7 @@ export type AccessTokenResult = { token: string; account: string } | { error: st
 let refreshInFlight: Promise<AccessTokenResult> | null = null;
 
 export async function getValidAccessToken(): Promise<AccessTokenResult> {
-  const record = readTokenRecord();
+  const record = await readTokenRecord();
   if (!record) return { error: "not-connected" };
 
   if (record.expiresAt > Date.now() + REFRESH_BUFFER_MS) {
@@ -207,7 +207,7 @@ async function refreshAccessToken(record: MercadoLibreTokenRecord): Promise<Acce
       // A dead refresh token (expired after 6 months, revoked, or already
       // consumed) can never succeed again — clear it so status/search fall
       // back to "Not Connected" instead of retrying a doomed token forever.
-      if (res.status === 400 || res.status === 401) clearTokenRecord();
+      if (res.status === 400 || res.status === 401) await clearTokenRecord();
       return {
         error: `Mercado Libre session expired or was revoked (${detail}). Please reconnect Mercado Libre.`,
       };
@@ -219,7 +219,7 @@ async function refreshAccessToken(record: MercadoLibreTokenRecord): Promise<Acce
       refreshToken: data.refresh_token ?? record.refreshToken,
       expiresAt: Date.now() + (data.expires_in ?? 10_800) * 1000,
     };
-    writeTokenRecord(updated);
+    await writeTokenRecord(updated);
     return { token: updated.accessToken, account: updated.nickname };
   } catch (err) {
     console.error(`${DEBUG_PREFIX} refresh threw`, err);
@@ -232,8 +232,8 @@ async function refreshAccessToken(record: MercadoLibreTokenRecord): Promise<Acce
   }
 }
 
-export function disconnectMercadoLibre(): void {
-  clearTokenRecord();
+export async function disconnectMercadoLibre(): Promise<void> {
+  await clearTokenRecord();
 }
 
 export async function getConnectionStatus(): Promise<

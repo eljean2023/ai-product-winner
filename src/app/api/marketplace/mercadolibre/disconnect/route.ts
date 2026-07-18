@@ -5,6 +5,6 @@ import { disconnectMercadoLibre } from "@/lib/marketplace/providers/mercadoLibre
 // it just forgets the local token; the user can also revoke access from
 // their Mercado Libre account settings.
 export async function POST() {
-  disconnectMercadoLibre();
+  await disconnectMercadoLibre();
   return Response.json({ ok: true });
 }

@@ -89,6 +89,14 @@ export interface MarketplaceSearchOptions {
 export interface ProviderStatus {
   connected: boolean;
   reason?: string;
+  // Whether the provider has the credentials it needs to function at all
+  // (env vars present), independent of `connected`. A provider can be
+  // configured but not connected (e.g. Mercado Libre's OAuth handshake
+  // hasn't been completed yet) — that must read as "Not connected", never
+  // "Not configured", since the latter tells the operator to go check env
+  // vars that are actually fine. Optional because not every ProviderStatus
+  // producer distinguishes the two (e.g. Keepa, where configured === connected).
+  configured?: boolean;
 }
 
 // Shared by every provider family (marketplace search today, historical

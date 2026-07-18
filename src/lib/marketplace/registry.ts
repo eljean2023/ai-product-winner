@@ -78,9 +78,9 @@ export async function getAllProviderStatuses(): Promise<Record<string, ProviderS
 
   const entries = results.map((result, i) => {
     const provider = marketplaceProviders[i];
-    if (result.status === "fulfilled") return [provider.id, result.value] as const;
+    if (result.status === "fulfilled") return [provider.id, { ...result.value, configured: provider.isConfigured() }] as const;
     const reason = result.reason instanceof Error ? result.reason.message : "Status check failed.";
-    return [provider.id, { connected: false, reason }] as const;
+    return [provider.id, { connected: false, reason, configured: provider.isConfigured() }] as const;
   });
 
   return Object.fromEntries(entries);

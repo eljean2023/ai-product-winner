@@ -1,11 +1,12 @@
-import fs from "node:fs";
-import path from "node:path";
 import { NextResponse } from "next/server";
 import { getMercadoLibreOAuthConfig, isMercadoLibreConfigured } from "@/lib/marketplace/providers/mercadoLibreConfig";
+import { getConnectionStatus } from "@/lib/marketplace/providers/mercadoLibreOAuth";
+import { getPrisma } from "@/lib/prisma";
 
 // TEMPORARY diagnostic route — audit only, safe to hit in production.
 // Never returns secret values, only booleans/lengths. Remove once the
-// Mercado Libre "not configured" investigation is closed.
+// Mercado Libre persistence fix (filesystem -> Postgres via Prisma) is
+// confirmed working end-to-end in production.
 const EXPECTED_REDIRECT_URI = "https://ai-product-winner.vercel.app/api/marketplace/mercadolibre/callback";
 
 export async function GET() {
@@ -20,26 +21,29 @@ export async function GET() {
     ML_AUTH_DOMAIN: { exists: Boolean(process.env.ML_AUTH_DOMAIN), value: process.env.ML_AUTH_DOMAIN ?? null },
   };
 
-  let tokenStoreWritable = false;
-  let tokenStoreError: string | null = null;
+  let dbReachable = false;
+  let dbError: string | null = null;
+  let tokenRowExists = false;
   try {
-    const dir = path.join(process.cwd(), ".data");
-    fs.mkdirSync(dir, { recursive: true });
-    const testPath = path.join(dir, "diagnostic-write-test.tmp");
-    fs.writeFileSync(testPath, "ok");
-    fs.unlinkSync(testPath);
-    tokenStoreWritable = true;
+    const prisma = getPrisma();
+    const row = await prisma.marketplaceOAuthToken.findUnique({ where: { provider: "mercadolibre" } });
+    dbReachable = true;
+    tokenRowExists = row !== null;
   } catch (err) {
-    tokenStoreError = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    dbError = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
   }
+
+  const connectionStatus = await getConnectionStatus().catch((err) => ({
+    connected: false as const,
+    error: err instanceof Error ? err.message : String(err),
+  }));
 
   return NextResponse.json({
     env,
     isMercadoLibreConfigured: isMercadoLibreConfigured(),
     oauthConfigResolved: getMercadoLibreOAuthConfig() !== null,
-    tokenStoreWritable,
-    tokenStoreError,
-    cwd: process.cwd(),
+    database: { reachable: dbReachable, error: dbError, tokenRowExists },
+    connectionStatus,
     vercel: {
       isVercel: Boolean(process.env.VERCEL),
       region: process.env.VERCEL_REGION ?? null,

@@ -1,0 +1,636 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Single-tenant OAuth token storage for marketplace providers that require a
+// user-authorized connection (currently just Mercado Libre). One row per
+// `provider`. Replaces the old filesystem-based store, which cannot persist
+// on Vercel's read-only serverless filesystem — see
+// src/lib/marketplace/providers/mercadoLibreTokenStore.ts. Intentionally
+// standalone (no relations to Company/User) since this is app-level OAuth
+// state, not tenant data.
+model MarketplaceOAuthToken {
+  id           String   @id @default(cuid())
+  provider     String   @unique
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  userId       Int?
+  nickname     String?
+  siteId       String?
+  obtainedAt   DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model ActivityLog {
+  id        String       @id
+  companyId String?
+  productId String?
+  userId    String?
+  type      ActivityType
+  message   String
+  metadata  Json?
+  createdAt DateTime     @default(now())
+  Company   Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  Product   Product?     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  User      User?        @relation(fields: [userId], references: [id])
+
+  @@index([companyId])
+  @@index([createdAt])
+  @@index([productId])
+}
+
+model ApiKey {
+  id         String    @id
+  companyId  String
+  name       String
+  keyHash    String    @unique
+  keyPrefix  String
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+  revokedAt  DateTime?
+  Company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+}
+
+model Company {
+  id                        String                      @id
+  name                      String
+  industry                  String?
+  website                   String?
+  phone                     String?
+  timezone                  String                      @default("UTC")
+  createdAt                 DateTime                    @default(now())
+  updatedAt                 DateTime
+  subscriptionPlanCode      SubscriptionPlanCode        @default(FREE)
+  subscriptionStatus        SubscriptionStatus          @default(TRIAL)
+  currency                  String                      @default("USD")
+  stripeCustomerId          String?
+  stripeSubscriptionId      String?
+  subscriptionStartedAt     DateTime?
+  currentPeriodEnd          DateTime?
+  lastPaymentAt             DateTime?
+  canceledAt                DateTime?
+  trialEndsAt               DateTime?
+  ActivityLog               ActivityLog[]
+  ApiKey                    ApiKey[]
+  EmailLog                  EmailLog[]
+  EmailTemplate             EmailTemplate[]
+  MobileDevice              MobileDevice[]
+  Notification              Notification[]
+  NotificationChannelConfig NotificationChannelConfig[]
+  Product                   Product[]
+  ProductWatchlist          ProductWatchlist[]
+  SubscriptionPayment       SubscriptionPayment[]
+  TeamMember                TeamMember[]
+  TenantNotification        TenantNotification[]
+  UniversalPushSubscription UniversalPushSubscription[]
+  User                      User[]
+}
+
+model EmailLog {
+  id            String         @id
+  companyId     String
+  userId        String?
+  templateId    String?
+  recipient     String
+  subject       String
+  status        EmailLogStatus @default(PENDING)
+  error         String?
+  resendId      String?        @unique
+  sentAt        DateTime?
+  deliveredAt   DateTime?
+  openedAt      DateTime?
+  clickedAt     DateTime?
+  bouncedAt     DateTime?
+  createdAt     DateTime       @default(now())
+  Company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  EmailTemplate EmailTemplate? @relation(fields: [templateId], references: [id])
+  User          User?          @relation(fields: [userId], references: [id])
+
+  @@index([companyId, createdAt])
+  @@index([companyId])
+  @@index([status])
+  @@index([templateId])
+}
+
+model EmailTemplate {
+  id                                   String           @id
+  scope                                TemplateScope
+  companyId                            String?
+  name                                 String
+  subject                              String
+  message                              String
+  language                             String
+  category                             TemplateCategory @default(CUSTOM)
+  isFavorite                           Boolean          @default(false)
+  createdById                          String?
+  updatedById                          String?
+  timesUsed                            Int              @default(0)
+  emailsSent                           Int              @default(0)
+  emailsFailed                         Int              @default(0)
+  lastUsedAt                           DateTime?
+  createdAt                            DateTime         @default(now())
+  updatedAt                            DateTime
+  EmailLog                             EmailLog[]
+  Company                              Company?         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  User_EmailTemplate_createdByIdToUser User?            @relation("EmailTemplate_createdByIdToUser", fields: [createdById], references: [id])
+  User_EmailTemplate_updatedByIdToUser User?            @relation("EmailTemplate_updatedByIdToUser", fields: [updatedById], references: [id])
+
+  @@index([companyId, category])
+  @@index([companyId])
+  @@index([scope])
+}
+
+model MarketSignal {
+  id        String   @id
+  productId String
+  category  String
+  weight    Int
+  detail    String?
+  createdAt DateTime @default(now())
+  Product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+}
+
+model MobileDevice {
+  id         String           @id
+  userId     String
+  companyId  String
+  platform   PushPlatformType
+  deviceName String?
+  deviceId   String           @unique
+  fcmToken   String
+  lastSeen   DateTime         @default(now())
+  lastIp     String?
+  appVersion String
+  isActive   Boolean          @default(true)
+  createdAt  DateTime         @default(now())
+  Company    Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  User       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([userId])
+}
+
+model MobileRefreshToken {
+  id        String    @id
+  userId    String
+  tokenHash String    @unique
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+  User      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Notification {
+  id        String              @id
+  companyId String
+  productId String?
+  channel   NotificationChannel
+  status    NotificationStatus  @default(PENDING)
+  payload   Json?
+  error     String?
+  sentAt    DateTime?
+  createdAt DateTime            @default(now())
+  Company   Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  Product   Product?            @relation(fields: [productId], references: [id])
+
+  @@index([companyId])
+  @@index([status])
+}
+
+model NotificationChannelConfig {
+  id        String              @id
+  companyId String
+  channel   NotificationChannel
+  isEnabled Boolean             @default(false)
+  config    Json?
+  createdAt DateTime            @default(now())
+  updatedAt DateTime
+  Company   Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, channel])
+}
+
+model NotificationDismissal {
+  id             String   @id
+  userId         String
+  source         String
+  notificationId String
+  createdAt      DateTime @default(now())
+  User           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, source, notificationId])
+  @@index([userId])
+}
+
+model PlatformEvent {
+  id        String                @id
+  type      PlatformEventType
+  priority  PlatformEventPriority
+  category  PlatformEventCategory
+  title     String
+  body      String?
+  metadata  Json?
+  companyId String?
+  createdAt DateTime              @default(now())
+
+  @@index([category])
+  @@index([createdAt])
+  @@index([priority])
+  @@index([type])
+}
+
+model PlatformSettings {
+  id               String   @id @default("singleton")
+  defaultTrialDays Int      @default(14)
+  updatedAt        DateTime
+}
+
+model Product {
+  id                    String               @id
+  companyId             String?
+  name                  String
+  category              String
+  supplierCost          Decimal?
+  sellingPrice          Decimal?
+  competitionLevel      String?
+  estimatedDemand       String?
+  marginPct             Float?
+  opportunityScore      Int                  @default(0)
+  marketAnalysis        String?
+  productRecommendation String?
+  confidenceScore       Float?
+  evaluationStatus      EvaluationStatus     @default(NEW)
+  nextStep              String?
+  reviewAt              DateTime?
+  createdById           String?
+  isDemo                Boolean              @default(false)
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime
+  ActivityLog           ActivityLog[]
+  MarketSignal          MarketSignal[]
+  Notification          Notification[]
+  Company               Company?             @relation(fields: [companyId], references: [id])
+  User                  User?                @relation(fields: [createdById], references: [id])
+  ProductAnalysis       ProductAnalysis[]
+  ProductNote           ProductNote[]
+  ProductWatchlist      ProductWatchlist[]
+  TenantNotification    TenantNotification[]
+
+  @@index([category])
+  @@index([companyId, createdById])
+  @@index([companyId])
+  @@index([companyId, isDemo])
+  @@index([companyId, reviewAt])
+  @@index([evaluationStatus])
+}
+
+model ProductAnalysis {
+  id        String   @id
+  productId String
+  score     Int
+  reason    String?
+  createdAt DateTime @default(now())
+  Product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+}
+
+model ProductNote {
+  id        String   @id
+  productId String
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+  User      User     @relation(fields: [authorId], references: [id])
+  Product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+}
+
+model ProductWatchlist {
+  id        String   @id
+  companyId String
+  userId    String
+  productId String
+  createdAt DateTime @default(now())
+  Company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  Product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([companyId])
+}
+
+model StripeWebhookEvent {
+  id        String   @id
+  eventId   String   @unique
+  eventType String
+  payload   Json?
+  createdAt DateTime @default(now())
+}
+
+model SubscriptionPayment {
+  id                   String   @id
+  companyId            String
+  stripePaymentId      String   @unique
+  stripeSubscriptionId String?
+  amount               Decimal
+  currency             String
+  status               String
+  createdAt            DateTime @default(now())
+  Company              Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([createdAt])
+}
+
+model SubscriptionPlan {
+  id                      String                  @id
+  code                    SubscriptionPlanCode    @unique
+  name                    String
+  monthlyPrice            Decimal
+  yearlyPrice             Decimal?
+  setupFee                Decimal                 @default(0)
+  stripeProductId         String?
+  stripePriceId           String?
+  stripeSetupFeeProductId String?
+  stripeSetupFeePriceId   String?
+  currency                String                  @default("USD")
+  isActive                Boolean                 @default(true)
+  maxUsers                Int?
+  smsEnabled              Boolean                 @default(false)
+  whatsappEnabled         Boolean                 @default(false)
+  apiEnabled              Boolean                 @default(false)
+  lastSyncedAt            DateTime?
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime
+  SubscriptionPlanPrice   SubscriptionPlanPrice[]
+}
+
+model SubscriptionPlanPrice {
+  id                    String           @id
+  planId                String
+  currency              String
+  monthlyPrice          Decimal
+  setupFee              Decimal          @default(0)
+  stripePriceId         String?
+  stripeSetupFeePriceId String?
+  lastSyncedAt          DateTime?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime
+  SubscriptionPlan      SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, currency])
+  @@index([planId])
+}
+
+model TeamMember {
+  id        String           @id
+  companyId String
+  email     String
+  role      UserRole         @default(USER)
+  status    TeamMemberStatus @default(ACTIVE)
+  userId    String?          @unique
+  invitedAt DateTime         @default(now())
+  joinedAt  DateTime?
+  Company   Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  User      User?            @relation(fields: [userId], references: [id])
+
+  @@unique([companyId, email])
+  @@index([companyId])
+  @@index([userId])
+}
+
+model TenantNotification {
+  id        String                 @id
+  companyId String
+  userId    String?
+  productId String?
+  type      TenantNotificationType
+  title     String
+  body      String?
+  metadata  Json?
+  readAt    DateTime?
+  createdAt DateTime               @default(now())
+  Company   Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  Product   Product?               @relation(fields: [productId], references: [id])
+  User      User?                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([createdAt])
+  @@index([productId])
+  @@index([userId])
+}
+
+model UniversalPushSubscription {
+  id           String                 @id
+  userId       String?
+  companyId    String?
+  endpoint     String                 @unique
+  authKey      String
+  p256dhKey    String
+  platformType PushPlatformType
+  status       PushSubscriptionStatus @default(ACTIVE)
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime
+  Company      Company?               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  User         User?                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([status])
+  @@index([userId])
+}
+
+model User {
+  id                                            String                      @id
+  email                                         String                      @unique
+  name                                          String
+  passwordHash                                  String
+  role                                          UserRole                    @default(USER)
+  companyId                                     String
+  passwordResetTokenHash                        String?
+  passwordResetExpiresAt                        DateTime?
+  deactivatedAt                                 DateTime?
+  mustChangePassword                            Boolean                     @default(false)
+  createdAt                                     DateTime                    @default(now())
+  updatedAt                                     DateTime
+  ActivityLog                                   ActivityLog[]
+  EmailLog                                      EmailLog[]
+  EmailTemplate_EmailTemplate_createdByIdToUser EmailTemplate[]             @relation("EmailTemplate_createdByIdToUser")
+  EmailTemplate_EmailTemplate_updatedByIdToUser EmailTemplate[]             @relation("EmailTemplate_updatedByIdToUser")
+  MobileDevice                                  MobileDevice[]
+  MobileRefreshToken                            MobileRefreshToken[]
+  NotificationDismissal                         NotificationDismissal[]
+  Product                                       Product[]
+  ProductNote                                   ProductNote[]
+  ProductWatchlist                              ProductWatchlist[]
+  TeamMember                                    TeamMember?
+  TenantNotification                            TenantNotification[]
+  UniversalPushSubscription                     UniversalPushSubscription[]
+  Company                                       Company                     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+}
+
+enum ActivityType {
+  PRODUCT_CREATED
+  PRODUCT_ANALYZED
+  PRODUCT_STATUS_CHANGED
+  PRODUCT_WATCHLISTED
+  PRODUCT_VALIDATED
+  PRODUCT_REJECTED
+  NOTE_ADDED
+  NOTIFICATION_SENT
+  USER_REGISTERED
+  USER_LOGIN
+  TEAM_MEMBER_ADDED
+  TEAM_MEMBER_REMOVED
+  SUBSCRIPTION_PROVISIONED
+  SUBSCRIPTION_ACTIVATED
+  SUBSCRIPTION_CANCELED
+  PAYMENT_RECEIVED
+  PAYMENT_FAILED
+  STRIPE_SYNC_COMPLETED
+  TRIAL_EXTENDED
+  TRIAL_ENDED
+  TRIAL_RESET
+  TRIAL_LENGTH_CHANGED
+}
+
+enum EmailLogStatus {
+  PENDING
+  SENT
+  DELIVERED
+  OPENED
+  CLICKED
+  BOUNCED
+  FAILED
+}
+
+enum EvaluationStatus {
+  NEW
+  RESEARCHING
+  VALIDATED
+  SOURCING
+  REJECTED
+}
+
+enum NotificationChannel {
+  EMAIL
+  SLACK
+  TEAMS
+  WEBHOOK
+  WHATSAPP
+  SMS
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum PlatformEventCategory {
+  BUSINESS
+  PAYMENT
+  SYSTEM
+  SECURITY
+}
+
+enum PlatformEventPriority {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+enum PlatformEventType {
+  COMPANY_REGISTERED
+  USER_REGISTERED
+  TRIAL_STARTED
+  TRIAL_CONVERTED_TO_PAID
+  TRIAL_EXPIRED
+  SUBSCRIPTION_PURCHASED
+  SUBSCRIPTION_UPGRADED
+  SUBSCRIPTION_DOWNGRADED
+  SUBSCRIPTION_RENEWED
+  PAYMENT_SUCCEEDED
+  PAYMENT_FAILED
+  SUBSCRIPTION_CANCELED
+  COMPANY_SUSPENDED
+  COMPANY_REACTIVATED
+  WEBHOOK_FAILED
+  SYSTEM_ERROR
+}
+
+enum PushPlatformType {
+  IOS
+  ANDROID
+}
+
+enum PushSubscriptionStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum SubscriptionPlanCode {
+  FREE
+  STARTER
+  PROFESSIONAL
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+enum TeamMemberStatus {
+  ACTIVE
+  REMOVED
+}
+
+enum TemplateCategory {
+  GENERAL
+  SALES
+  PROMOTION
+  FOLLOW_UP
+  WELCOME
+  CUSTOM
+}
+
+enum TemplateScope {
+  PLATFORM
+  COMPANY
+}
+
+enum TenantNotificationType {
+  PRODUCT_CREATED
+  PRODUCT_HIGH_OPPORTUNITY
+  PRODUCT_STATUS_CHANGED
+  PRODUCT_REVIEW_DUE
+  TEAM_MEMBER_ADDED
+  TEAM_MEMBER_REMOVED
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  SUPER_ADMIN
+  DEMO
+}
