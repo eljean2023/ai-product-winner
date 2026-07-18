@@ -231,8 +231,16 @@ export async function discoverOpportunities(
   const available = summaries.filter((s) => s.available && s.listings.length > 0);
 
   if (available.length === 0) {
-    const reason = summaries.find((s) => s.reason)?.reason;
-    return { products: [], reason: reason ?? "No products found across connected marketplaces." };
+    // A connected marketplace that simply found no listings for this query
+    // is a different situation from every marketplace being unreachable —
+    // don't let an unrelated provider's "not configured" reason misattribute
+    // an empty result to the wrong marketplace.
+    const anyConnected = summaries.some((s) => s.available);
+    const reason = anyConnected ? undefined : summaries.find((s) => s.reason)?.reason;
+    return {
+      products: [],
+      reason: reason ?? "No products found across connected marketplaces.",
+    };
   }
 
   const scored = available.flatMap((summary) => {

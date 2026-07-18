@@ -68,11 +68,21 @@ export async function searchAllMarketplaces(
 
 // Connection status for every registered provider, without performing a
 // search — used by /api/marketplace/status so the UI can show what's
-// connected without hitting any marketplace's network.
+// connected without hitting any marketplace's network. Uses allSettled (like
+// searchAllMarketplaces above) so one provider's status check throwing can
+// never blank out every other provider's real status.
 export async function getAllProviderStatuses(): Promise<Record<string, ProviderStatus>> {
-  const entries = await Promise.all(
-    marketplaceProviders.map(async (provider) => [provider.id, await provider.getProviderStatus()] as const)
+  const results = await Promise.allSettled(
+    marketplaceProviders.map((provider) => provider.getProviderStatus())
   );
+
+  const entries = results.map((result, i) => {
+    const provider = marketplaceProviders[i];
+    if (result.status === "fulfilled") return [provider.id, result.value] as const;
+    const reason = result.reason instanceof Error ? result.reason.message : "Status check failed.";
+    return [provider.id, { connected: false, reason }] as const;
+  });
+
   return Object.fromEntries(entries);
 }
 
