@@ -129,6 +129,18 @@ export interface ProductHistoryPoint {
   timestamp: string;
   price?: number;
   salesRank?: number;
+  // Real per-product review-count/rating snapshots over time — the raw
+  // material for a review-velocity signal (see historicalIntelligence.ts).
+  rating?: number;
+  reviewCount?: number;
+  // Winning Buy Box price at this point (Keepa: -1 means no offer currently
+  // qualifies for the Buy Box — already filtered out by the provider, never
+  // passed through as a real price).
+  buyBoxPrice?: number;
+  // Count of active "New" condition offers at this point — the closest
+  // verifiable stock/supply-continuity proxy available from a provider's
+  // base history response; not a true in-stock/out-of-stock boolean series.
+  offerCountNew?: number;
 }
 
 export interface ProductHistory {

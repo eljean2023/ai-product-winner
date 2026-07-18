@@ -14,15 +14,14 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 **These thresholds must never be loosened to reduce the number of "High Risk" results.** This is a permanent architectural principle, not a temporary calibration: it is better to reject a mediocre product than to recommend a poor investment, and a conservative recommendation system builds more trust than an optimistic one.
 
-If verification ever shows too many products landing on "High Risk" (or too few reaching "Strong Opportunity"), **the fix is to improve the scoring engine's inputs** — never to lower these thresholds. Score quality should evolve until genuinely strong opportunities naturally exceed 80+ on their own merits. Planned signal improvements for `heuristicProvider.ts` / `productScoring.ts` / `hybridEngine.ts` / `categoryProfiles.ts` include:
+If verification ever shows too many products landing on "High Risk" (or too few reaching "Strong Opportunity"), **the fix is to improve the scoring engine's inputs** — never to lower these thresholds. Score quality should evolve until genuinely strong opportunities naturally exceed 80+ on their own merits.
 
-- Keepa historical price data
-- Sales Rank
+**Implemented** — Keepa historical intelligence (`src/lib/marketplace/providers/keepa.ts` decodes the raw series, `src/lib/engine/historicalIntelligence.ts` derives signals and blends them into dimensions, wired into both `analyzeProduct` and `discoverOpportunities` in `hybridEngine.ts`): price history/trend, price stability, price volatility, Sales Rank trend, review velocity, Buy Box price stability, and a stock/supply-continuity proxy (derived from active-offer-count continuity — Keepa's public `/product` endpoint has no dedicated timestamped in-stock/out-of-stock series). Amazon-only (Keepa is keyed by ASIN); every signal is null-gated on the underlying series having enough points, never fabricated.
+
+Still-planned signal improvements for `heuristicProvider.ts` / `productScoring.ts` / `hybridEngine.ts` / `categoryProfiles.ts` include:
+
 - Estimated monthly sales
-- Price history / trend history
 - Seller concentration
-- Review velocity
-- Buy Box information
 - Marketplace diversity
 
 Any future work on this engine — by any agent, in any session — must treat this section as binding.
