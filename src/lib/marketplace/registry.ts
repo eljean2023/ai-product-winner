@@ -18,21 +18,23 @@ import type { MarketplaceProvider, MarketplaceSearchOptions, MarketplaceSummary,
 //
 // Order here is priority order — also what the engine uses to pick a
 // "primary" summary when several are available for the same query (see
-// hybridEngine.ts's pickPrimarySummary). SerpAPI is the primary, no-OAuth
-// path; everything else is optional/secondary and never blocks the app when
-// unconfigured. `ebayDirectProvider` and `walmartProvider` are prepared
-// foundations for future integrations — always reporting themselves as not
-// configured today, contributing nothing to a search, exactly like
-// `amazonProvider` (the direct PA-API path) does until its credentials are
-// set. Adding a new marketplace means implementing MarketplaceProvider and
-// adding it here — nothing else in the app needs to change.
+// hybridEngine.ts's pickPrimarySummary). Each marketplace's own official/
+// direct integration is listed first and SerpAPI last, on purpose: SerpAPI
+// is kept only as an optional fallback so the app keeps working end-to-end
+// (Amazon + eBay data included) purely on official APIs, with zero
+// operational dependency on SerpAPI — SerpAPI only ever contributes a
+// result when its own official-API counterpart for that marketplace isn't
+// configured. Every provider independently reports "Not Connected" without
+// blocking the others when its own credentials are missing. Adding a new
+// marketplace means implementing MarketplaceProvider and adding it here —
+// nothing else in the app needs to change.
 export const marketplaceProviders: MarketplaceProvider[] = [
-  serpApiAmazonProvider,
-  serpApiEbayProvider,
-  mercadoLibreProvider,
   amazonProvider,
   ebayDirectProvider,
+  mercadoLibreProvider,
   walmartProvider,
+  serpApiAmazonProvider,
+  serpApiEbayProvider,
 ];
 
 export async function searchAllMarketplaces(
